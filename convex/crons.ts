@@ -9,4 +9,10 @@ crons.interval(
   internal.pastes.cleanupExpired
 );
 
+crons.interval(
+  "monitor rate limit",
+  { minutes: 5 },
+  internal.pastes.monitorRateLimit
+);
+
 export default crons;

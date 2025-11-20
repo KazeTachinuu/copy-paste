@@ -1,5 +1,6 @@
 import { convex } from './convex.js';
 import { api } from '../convex/_generated/api.js';
+import { getClientId } from './clientId.js';
 
 /**
  * Create a new paste
@@ -11,6 +12,7 @@ export async function createPaste(data) {
     const result = await convex.mutation(api.pastes.createPaste, {
       text: data.text,
       customCode: data.customCode || undefined,
+      clientId: getClientId(),
     });
     return result;
   } catch (error) {
