@@ -91,31 +91,26 @@ function startRealtimeSync() {
     }
 
     // Subscribe to real-time updates
-    unsubscribeFromPaste = subscribeToPaste(currentSessionCode, (data, error) => {
-        if (error) {
-            // Handle subscription errors
-            if (error.message && error.message.includes('not found')) {
-                stopRealtimeSync();
-                showToast('Session expired', 'error');
-            }
-            return;
-        }
+    unsubscribeFromPaste = subscribeToPaste(currentSessionCode, (data) => {
+        // Ignore if we're not in the right mode or if data is null (paste doesn't exist yet)
+        if (!data || currentMode !== 'session' || !currentSessionCode) return;
 
-        if (!data || currentMode !== 'session' || !currentSessionCode || isSyncing) return;
-
-        // Only update if text is different and we're not currently typing
-        if (data.text !== mainTextarea.value && data.text !== lastSyncedText) {
-            const cursorPosition = mainTextarea.selectionStart;
-            const isAtEnd = cursorPosition === mainTextarea.value.length;
-
-            mainTextarea.value = data.text;
+        // Update UI if text changed
+        if (data.text !== lastSyncedText) {
             lastSyncedText = data.text;
 
-            // Restore cursor position (if at end, keep at end)
-            if (isAtEnd) {
-                mainTextarea.selectionStart = mainTextarea.selectionEnd = mainTextarea.value.length;
-            } else {
-                mainTextarea.selectionStart = mainTextarea.selectionEnd = Math.min(cursorPosition, mainTextarea.value.length);
+            if (data.text !== mainTextarea.value) {
+                const cursorPosition = mainTextarea.selectionStart;
+                const isAtEnd = cursorPosition === mainTextarea.value.length;
+
+                mainTextarea.value = data.text;
+
+                // Restore cursor position
+                if (isAtEnd) {
+                    mainTextarea.selectionStart = mainTextarea.selectionEnd = mainTextarea.value.length;
+                } else {
+                    mainTextarea.selectionStart = mainTextarea.selectionEnd = Math.min(cursorPosition, mainTextarea.value.length);
+                }
             }
         }
 
@@ -291,7 +286,10 @@ function handleInput() {
         subtleCodeSpan.textContent = currentSessionCode;
         subtleCodeDisplay.classList.remove('hidden');
         showToast(`Session created: ${currentSessionCode}`, 'success');
-        startRealtimeSync();
+
+        // Create paste immediately so others can join right away
+        saveSessionContent();
+        return; // Don't debounce the initial save
     }
 
     clearTimeout(debounceTimer);
@@ -304,7 +302,8 @@ async function saveSessionContent() {
     const text = mainTextarea.value.trim();
 
     if (currentMode === 'session') {
-        if (!currentSessionCode || !text) return;
+        if (!currentSessionCode) return;
+        if (!text && unsubscribeFromPaste) return; // Only skip empty saves after initial creation
 
         isSyncing = true;
         try {
@@ -314,6 +313,11 @@ async function saveSessionContent() {
             lastSyncedText = text;
             updateExpireTime(data.expiresAt);
             trackInteraction(data.code, data.expiresAt);
+
+            // Start real-time sync after first successful save
+            if (!unsubscribeFromPaste) {
+                startRealtimeSync();
+            }
         } catch (err) {
             console.error('Error saving session:', err);
             const message = err.status === 429 ? formatRateLimitMessage(err.retryAfter)

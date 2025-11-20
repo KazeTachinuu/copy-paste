@@ -124,6 +124,28 @@ export const getPaste = query({
   },
 });
 
+// Query: Watch a paste by code (for real-time subscriptions)
+// Returns null instead of throwing when paste doesn't exist yet
+export const watchPaste = query({
+  args: {
+    code: v.string(),
+  },
+  handler: async (ctx, { code }) => {
+    const paste = await findPasteByCode(ctx, code);
+
+    // Return null if paste doesn't exist or is expired
+    if (!paste || paste.expiresAt < Date.now()) {
+      return null;
+    }
+
+    return {
+      text: paste.text,
+      type: paste.type,
+      expiresAt: paste.expiresAt,
+    };
+  },
+});
+
 // Internal Mutation: Clean up expired pastes (called by cron job)
 export const cleanupExpired = internalMutation({
   handler: async (ctx) => {

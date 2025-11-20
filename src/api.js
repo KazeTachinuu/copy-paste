@@ -41,19 +41,11 @@ export async function getPaste(code) {
 /**
  * Subscribe to paste updates (reactive query)
  * @param {string} code
- * @param {Function} callback - Called with updated data
+ * @param {Function} callback - Called with updated data (null if not found/expired)
  * @returns {Function} Unsubscribe function
  */
 export function subscribeToPaste(code, callback) {
-  const unsubscribe = convex.watchQuery(api.pastes.getPaste, { code }, {
-    onUpdate: (result) => {
-      if (result.type === 'success') {
-        callback(result.value);
-      } else if (result.type === 'error') {
-        callback(null, result.error);
-      }
-    },
+  return convex.onUpdate(api.pastes.watchPaste, { code }, (data) => {
+    callback(data);
   });
-
-  return unsubscribe;
 }
