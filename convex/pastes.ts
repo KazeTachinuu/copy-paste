@@ -61,6 +61,8 @@ export const createPaste = mutation({
       throw new Error(`Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
     }
 
+    console.log("createPaste called with clientId:", clientId);
+
     // Apply global rate limit first (protects against distributed attacks)
     await rateLimit(ctx, {
       name: "createPaste:global",
@@ -70,12 +72,15 @@ export const createPaste = mutation({
 
     // Apply per-client rate limit (if clientId provided)
     if (clientId) {
+      console.log("Applying per-client rate limit for:", clientId);
       await rateLimit(ctx, {
         name: "createPaste:client",
         key: clientId,
         throws: true,
         config: PER_CLIENT_RATE_LIMIT,
       });
+    } else {
+      console.warn("No clientId provided - skipping per-client rate limit");
     }
 
     const now = Date.now();
