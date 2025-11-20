@@ -27,15 +27,10 @@ const inputWrapper = document.querySelector('.input-wrapper');
 
 // State
 let debounceTimer;
-let currentImage = null; // Base64 string
+let currentImage = null;
 
-// Initialize theme
 initThemeToggle();
-
-// Cleanup expired pastes from localStorage on page load
 cleanupExpiredPastes();
-
-// Initialize Lucide icons
 createIcons({
     icons: { Copy, Download, X, ArrowRight, Sun, Moon, List }
 });
@@ -48,19 +43,14 @@ const urlParams = new URLSearchParams(window.location.search);
 const codeFromUrl = urlParams.get('code');
 if (codeFromUrl && codeFromUrl.length === PASTE.CODE_LENGTH) {
     codeInput.value = codeFromUrl;
-    // Auto-retrieve after a short delay to let the page load
     setTimeout(() => retrieveContent(), 100);
 }
 
-// --- Event Listeners ---
-
-// Text Input
+// Event Listeners
 mainTextarea.addEventListener('input', () => {
-    // Allow text input even if image is present
     handleInput();
 });
 
-// Paste Event (Text & Image)
 window.addEventListener('paste', (e) => {
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
 
@@ -79,7 +69,6 @@ window.addEventListener('paste', (e) => {
     }
 });
 
-// Drag & Drop
 window.addEventListener('dragover', (e) => {
     e.preventDefault();
     dropOverlay.classList.add('active');
@@ -109,13 +98,11 @@ window.addEventListener('drop', (e) => {
     }
 });
 
-// Clear Image
 clearImageBtn.addEventListener('click', () => {
     clearImage();
     mainTextarea.focus();
 });
 
-// Download Image
 downloadImageBtn.addEventListener('click', () => {
     if (currentImage) {
         const link = document.createElement('a');
@@ -128,7 +115,6 @@ downloadImageBtn.addEventListener('click', () => {
     }
 });
 
-// Copy Text
 copyTextBtn.addEventListener('click', () => {
     const text = mainTextarea.value;
     if (text) {
@@ -143,20 +129,17 @@ copyTextBtn.addEventListener('click', () => {
     }
 });
 
-// Get Text/Image
 getTextBtn.addEventListener('click', retrieveContent);
 codeInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') retrieveContent();
 });
 
-// Copy Code
 copyCodeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     navigator.clipboard.writeText(generatedCodeSpan.textContent);
     showButtonFeedback(copyCodeBtn, true, 'Copied to clipboard!');
 });
 
-// Dismiss big code overlay on click
 codeDisplayArea.addEventListener('click', () => {
     codeDisplayArea.classList.add('hidden');
 });
@@ -164,12 +147,6 @@ codeDisplayArea.addEventListener('click', () => {
 
 
 
-/**
- * Show visual feedback on a button by temporarily replacing it with a checkmark
- * @param {HTMLElement} button - Button element to show feedback on
- * @param {boolean} showToastMessage - Whether to also show a toast message
- * @param {string} toastMessage - Toast message to display if showToastMessage is true
- */
 function showButtonFeedback(button, showToastMessage = false, toastMessage = '') {
     if (button.dataset.feedbackActive) return;
 
@@ -191,7 +168,6 @@ function showButtonFeedback(button, showToastMessage = false, toastMessage = '')
 function handleInput() {
     const text = mainTextarea.value.trim();
 
-    // Generate if there is text OR an image
     if (!text && !currentImage) {
         codeDisplayArea.classList.add('hidden');
         subtleCodeDisplay.classList.add('hidden');
@@ -204,55 +180,33 @@ function handleInput() {
     }, UI.DEBOUNCE_DELAY);
 }
 
-/**
- * Validate image data URL for security
- * @param {string} dataUrl - Data URL to validate
- * @returns {boolean} True if valid and safe
- */
 function isValidImageDataUrl(dataUrl) {
   if (!dataUrl || typeof dataUrl !== 'string') return false;
-
-  // Must start with data:image/
   if (!dataUrl.startsWith('data:image/')) return false;
 
-  // Extract MIME type
   const mimeMatch = dataUrl.match(/^data:(image\/[^;]+);base64,/);
   if (!mimeMatch) return false;
 
   const mimeType = mimeMatch[1];
+  if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) return false;
 
-  // Check if MIME type is allowed (no SVG for XSS prevention)
-  if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) {
-    return false;
-  }
-
-  // Validate base64 encoding
   const base64Part = dataUrl.split(',')[1];
-  if (!base64Part || !/^[A-Za-z0-9+/=]+$/.test(base64Part)) {
-    return false;
-  }
+  if (!base64Part || !/^[A-Za-z0-9+/=]+$/.test(base64Part)) return false;
 
   return true;
 }
 
-/**
- * Process an image file and convert it to base64
- * @param {Blob} blob - Image file blob
- */
 function processImage(blob) {
-  // Validate file type
   if (!blob.type.startsWith('image/')) {
     showToast('Please select an image file', 'error');
     return;
   }
 
-  // Check if it's SVG (reject for security)
   if (blob.type === 'image/svg+xml') {
     showToast('SVG images are not supported for security reasons', 'error');
     return;
   }
 
-  // Validate file size
   if (blob.size > PASTE.MAX_IMAGE_SIZE) {
     const maxMB = PASTE.MAX_IMAGE_SIZE / 1024 / 1024;
     showToast(`Image must be smaller than ${maxMB}MB`, 'error');
@@ -263,7 +217,6 @@ function processImage(blob) {
   reader.onload = (event) => {
     const dataUrl = event.target.result;
 
-    // Validate the generated data URL
     if (!isValidImageDataUrl(dataUrl)) {
       showToast('Invalid or unsupported image format', 'error');
       return;
@@ -281,21 +234,14 @@ function processImage(blob) {
   reader.readAsDataURL(blob);
 }
 
-/**
- * Display image preview with security validation
- * @param {string} base64 - Base64 data URL
- */
 function showImagePreview(base64) {
-  // Validate image data URL for XSS prevention
   if (!isValidImageDataUrl(base64)) {
     showToast('Invalid or unsafe image data', 'error');
     clearImage();
     return;
   }
 
-  // Sanitize the data URL (additional layer of protection)
   const sanitized = DOMPurify.sanitize(base64);
-
   imagePreview.src = sanitized;
   imagePreviewContainer.classList.remove('hidden');
   mainTextarea.placeholder = 'Add a caption...';
@@ -306,43 +252,34 @@ function clearImage() {
     imagePreview.src = '';
     imagePreviewContainer.classList.add('hidden');
     mainTextarea.placeholder = 'Paste text or image here...';
-    // If text is empty, hide code
     if (!mainTextarea.value.trim()) {
         codeDisplayArea.classList.add('hidden');
         subtleCodeDisplay.classList.add('hidden');
     } else {
-        // If text remains, regenerate code for text only
         generateCode();
     }
 }
 
-/**
- * Generate a unique code for the current content (text and/or image)
- */
 async function generateCode() {
     const text = mainTextarea.value.trim();
 
     if (!text && !currentImage) return;
 
-    // Show loading state
     generatedCodeSpan.textContent = '...';
     subtleCodeSpan.textContent = '...';
     codeDisplayArea.classList.remove('hidden');
     subtleCodeDisplay.classList.remove('hidden');
 
-    const payload = {
-        text: text,
-        image: currentImage
-    };
+    const payload = {};
+    if (text) payload.text = text;
+    if (currentImage) payload.image = currentImage;
 
     try {
         const data = await createPaste(payload);
         generatedCodeSpan.textContent = data.code;
         subtleCodeSpan.textContent = data.code;
-
         trackInteraction(data.code, data.expiresAt);
 
-        // Auto-dismiss the big overlay after 5 seconds
         setTimeout(() => {
             codeDisplayArea.classList.add('hidden');
         }, 5000);
@@ -358,9 +295,6 @@ async function generateCode() {
     }
 }
 
-/**
- * Retrieve content from the server using a code
- */
 async function retrieveContent() {
     const code = codeInput.value.trim();
     if (code.length !== PASTE.CODE_LENGTH) {
