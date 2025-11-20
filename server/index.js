@@ -27,8 +27,18 @@ app.use(helmet({
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+
+    // In development, allow all localhost origins
     if (IS_DEVELOPMENT && /^http:\/\/localhost(:\d+)?$/.test(origin)) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+
+    // In production or if configured, check allowed origins
+    if (ALLOWED_ORIGINS.length > 0 && ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+
+    // If in development and no specific origins configured, allow all
+    if (IS_DEVELOPMENT && ALLOWED_ORIGINS.length === 0) return callback(null, true);
+
     callback(new Error('Not allowed by CORS'));
   },
   exposedHeaders: ['Retry-After']

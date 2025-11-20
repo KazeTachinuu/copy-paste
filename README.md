@@ -37,9 +37,9 @@ A lightweight web application for temporarily sharing text and images across dev
 
 2. **Install dependencies**
    ```bash
-   npm install
-   # or
    bun install
+   # or with npm
+   npm install
    ```
 
 3. **Set up Vercel KV (Required)**
@@ -55,8 +55,9 @@ A lightweight web application for temporarily sharing text and images across dev
 
    b. Link to your project:
    ```bash
-   # Install Vercel CLI if you haven't
-   npm i -g vercel
+   # Install Vercel CLI if you haven't (use bun or npm)
+   bun add -g vercel
+   # or: npm i -g vercel
 
    # Link your project
    vercel link
@@ -79,9 +80,9 @@ A lightweight web application for temporarily sharing text and images across dev
 
 5. **Run development server**
    ```bash
-   npm run dev
-   # or
    bun run dev
+   # or with npm
+   npm run dev
    ```
 
    This starts:
@@ -93,7 +94,7 @@ A lightweight web application for temporarily sharing text and images across dev
 ### Prerequisites
 
 - Vercel account
-- Vercel CLI installed (`npm i -g vercel`)
+- Vercel CLI installed (`bun add -g vercel` or `npm i -g vercel`)
 
 ### Deployment Steps
 
