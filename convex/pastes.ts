@@ -70,7 +70,7 @@ export const createPaste = mutation({
       const existing = await findPasteByCode(ctx, code);
       if (existing) {
         await ctx.db.patch(existing._id, { text, expiresAt });
-        return { code, text, expiresAt, type };
+        return { code, text, expiresAt, type, createdAt: existing.createdAt };
       }
     } else {
       let attempts = 0;
@@ -91,7 +91,7 @@ export const createPaste = mutation({
       createdAt: now,
     });
 
-    return { code, text, expiresAt, type };
+    return { code, text, expiresAt, type, createdAt: now };
   },
 });
 
@@ -116,6 +116,7 @@ export const getPaste = query({
       text: paste.text,
       type: paste.type,
       expiresAt: paste.expiresAt,
+      createdAt: paste.createdAt,
     };
   },
 });

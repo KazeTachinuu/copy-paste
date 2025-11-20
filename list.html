@@ -43,18 +43,25 @@
             <p class="subtitle" id="subtitle">Loading...</p>
         </header>
 
+        <div class="batch-actions" id="batch-actions" style="display: none;">
+            <span id="selected-count">0 selected</span>
+            <button id="delete-selected-btn" class="delete-selected-btn">Delete Selected</button>
+        </div>
+
         <div class="table-container">
             <table id="codes-table">
                 <thead>
                     <tr>
+                        <th><input type="checkbox" id="select-all" aria-label="Select all codes"></th>
                         <th>Code</th>
+                        <th>Created</th>
                         <th>Expires In</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="table-body">
                     <tr>
-                        <td colspan="3" style="text-align: center; padding: 2rem; color: #94a3b8;">
+                        <td colspan="5" style="text-align: center; padding: 2rem; color: #94a3b8;">
                             Loading...
                         </td>
                     </tr>

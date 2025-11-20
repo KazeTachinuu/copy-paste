@@ -34,6 +34,12 @@ const pagination = document.getElementById('pagination');
 const pageInfo = document.getElementById('page-info');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
+const selectAllCheckbox = document.getElementById('select-all');
+const batchActions = document.getElementById('batch-actions');
+const selectedCountSpan = document.getElementById('selected-count');
+const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+
+let selectedCodes = new Set();
 
 function loadCodes() {
     try {
@@ -56,18 +62,35 @@ function loadCodes() {
     }
 }
 
+function updateBatchActionsUI() {
+    const count = selectedCodes.size;
+    if (count > 0) {
+        batchActions.style.display = 'flex';
+        selectedCountSpan.textContent = `${count} selected`;
+    } else {
+        batchActions.style.display = 'none';
+    }
+
+    // Update select-all checkbox state
+    const currentPageCodes = Array.from(document.querySelectorAll('.row-checkbox')).map(cb => cb.dataset.code);
+    const allCurrentSelected = currentPageCodes.length > 0 && currentPageCodes.every(code => selectedCodes.has(code));
+    selectAllCheckbox.checked = allCurrentSelected;
+    selectAllCheckbox.indeterminate = !allCurrentSelected && currentPageCodes.some(code => selectedCodes.has(code));
+}
+
 function renderTable() {
     if (allPastes.length === 0) {
         subtitle.textContent = 'No active codes';
         tableBody.innerHTML = `
             <tr>
-                <td colspan="3" class="empty">
+                <td colspan="5" class="empty">
                     <div class="empty-message">No active pastes right now</div>
                     <div class="empty-hint">Create a paste on the home page to get started</div>
                 </td>
             </tr>
         `;
         pagination.style.display = 'none';
+        batchActions.style.display = 'none';
         return;
     }
 
@@ -78,7 +101,9 @@ function renderTable() {
 
     tableBody.innerHTML = pagePastes.map(paste => `
         <tr>
+            <td><input type="checkbox" class="row-checkbox" data-code="${escapeHtml(paste.code)}" ${selectedCodes.has(paste.code) ? 'checked' : ''} aria-label="Select ${escapeHtml(paste.code)}"></td>
             <td data-label="Code"><span class="code" data-code="${escapeHtml(paste.code)}" tabindex="0">${escapeHtml(paste.code)}</span></td>
+            <td data-label="Created" class="created-time">${formatRelativeTime(paste.createdAt)}</td>
             <td data-label="Expires In" class="expires" data-expires-at="${paste.expiresAt}">${formatTime(paste.expiresIn)}</td>
             <td data-label="Actions" class="actions">
                 <button class="delete-btn" data-code="${escapeHtml(paste.code)}" title="Delete from list" aria-label="Delete ${escapeHtml(paste.code)} from list">
@@ -87,6 +112,19 @@ function renderTable() {
             </td>
         </tr>
     `).join('');
+
+    // Row checkboxes
+    document.querySelectorAll('.row-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+            const code = e.target.dataset.code;
+            if (e.target.checked) {
+                selectedCodes.add(code);
+            } else {
+                selectedCodes.delete(code);
+            }
+            updateBatchActionsUI();
+        });
+    });
 
     document.querySelectorAll('.code').forEach(el => {
         el.addEventListener('click', () => {
@@ -143,6 +181,9 @@ function renderTable() {
 
     // Start countdown timer
     startCountdown();
+
+    // Update batch actions UI
+    updateBatchActionsUI();
 }
 
 function updateCountdowns() {
@@ -199,6 +240,77 @@ function formatTime(seconds) {
     }
     return `${secs}s`;
 }
+
+function formatRelativeTime(timestamp) {
+    if (!timestamp) return 'N/A';
+
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return 'N/A';
+
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+
+    const timeStr = date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+
+    if (isToday) {
+        return timeStr;
+    } else {
+        const dateStr = date.toLocaleDateString([], {
+            month: 'short',
+            day: 'numeric'
+        });
+        return `${dateStr}, ${timeStr}`;
+    }
+}
+
+// Select all checkbox
+selectAllCheckbox.addEventListener('change', (e) => {
+    const currentPageCodes = Array.from(document.querySelectorAll('.row-checkbox')).map(cb => cb.dataset.code);
+    if (e.target.checked) {
+        currentPageCodes.forEach(code => selectedCodes.add(code));
+    } else {
+        currentPageCodes.forEach(code => selectedCodes.delete(code));
+    }
+    renderTable();
+});
+
+// Delete selected button
+deleteSelectedBtn.addEventListener('click', async () => {
+    if (selectedCodes.size === 0) return;
+
+    if (deleteSelectedBtn.classList.contains('confirm')) {
+        // Second click - actually delete
+        const count = selectedCodes.size;
+        const codes = Array.from(selectedCodes);
+
+        for (const code of codes) {
+            deletePaste(code);
+        }
+
+        selectedCodes.clear();
+        showToast(`${count} code${count > 1 ? 's' : ''} removed from list`, 'success');
+        loadCodes();
+
+        // Reset button
+        deleteSelectedBtn.classList.remove('confirm');
+        deleteSelectedBtn.textContent = 'Delete Selected';
+    } else {
+        // First click - show confirmation
+        deleteSelectedBtn.classList.add('confirm');
+        deleteSelectedBtn.textContent = 'Sure?';
+
+        // Reset after 3 seconds
+        if (deleteConfirmTimeout) clearTimeout(deleteConfirmTimeout);
+        deleteConfirmTimeout = setTimeout(() => {
+            deleteSelectedBtn.classList.remove('confirm');
+            deleteSelectedBtn.textContent = 'Delete Selected';
+        }, 3000);
+    }
+});
 
 // Pagination controls
 prevBtn.addEventListener('click', () => {

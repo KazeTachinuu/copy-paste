@@ -230,7 +230,7 @@ getTextBtn.addEventListener('click', async () => {
             subtleCodeSpan.textContent = code;
             subtleCodeDisplay.classList.remove('hidden');
             updateExpireTime(data.expiresAt);
-            trackInteraction(code, data.expiresAt);
+            trackInteraction(code, data.expiresAt, data.createdAt);
             startRealtimeSync();
             showToast('Joined session!', 'success');
             codeInput.value = '';
@@ -291,6 +291,17 @@ function showButtonFeedback(button, showToastMessage = false, toastMessage = '')
     }, UI.FEEDBACK_DURATION);
 }
 
+function showCodeDisplay(code, autoHide = true) {
+    generatedCodeSpan.textContent = code;
+    subtleCodeSpan.textContent = code;
+    codeDisplayArea.classList.remove('hidden');
+    subtleCodeDisplay.classList.remove('hidden');
+
+    if (autoHide) {
+        setTimeout(() => codeDisplayArea.classList.add('hidden'), 5000);
+    }
+}
+
 function handleInput() {
     const text = mainTextarea.value.trim();
 
@@ -305,72 +316,70 @@ function handleInput() {
     // Auto-generate session code if in session mode and no code exists
     if (currentMode === 'session' && !currentSessionCode) {
         currentSessionCode = generateSessionCode();
-        subtleCodeSpan.textContent = currentSessionCode;
-        subtleCodeDisplay.classList.remove('hidden');
+        showCodeDisplay(currentSessionCode);
         showToast(`Session created: ${currentSessionCode}`, 'success');
 
         // Create paste immediately so others can join right away
-        saveSessionContent();
+        savePaste();
         return; // Don't debounce the initial save
     }
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-        saveSessionContent();
+        savePaste();
     }, UI.DEBOUNCE_DELAY);
 }
 
-async function saveSessionContent() {
+async function savePaste() {
     const text = mainTextarea.value.trim();
+    if (!text) return;
 
-    if (currentMode === 'session') {
-        if (!currentSessionCode) return;
-        if (!text && unsubscribeFromPaste) return; // Only skip empty saves after initial creation
+    const isSession = currentMode === 'session';
+    const customCode = isSession ? currentSessionCode : null;
 
-        isSyncing = true;
-        try {
-            const payload = { text, customCode: currentSessionCode };
-            const data = await createPaste(payload);
+    // Prevent saves when session code hasn't been generated yet
+    if (isSession && !currentSessionCode) return;
 
+    // Show loading state for quick paste
+    if (!isSession) {
+        showCodeDisplay('...', false);
+    }
+
+    isSyncing = isSession;
+
+    try {
+        const data = await createPaste({ text, customCode });
+
+        if (isSession) {
             lastSyncedText = text;
-            updateExpireTime(data.expiresAt);
-            trackInteraction(data.code, data.expiresAt);
-
             // Start real-time sync after first successful save
             if (!unsubscribeFromPaste) {
                 startRealtimeSync();
             }
-        } catch (err) {
-            console.error('Error saving session:', err);
-            const message = err.status === 429 ? formatRateLimitMessage(err.retryAfter)
-                          : 'Failed to sync';
-            showToast(message, 'error');
-        } finally {
-            isSyncing = false;
+        } else {
+            showCodeDisplay(data.code);
         }
-    } else {
-        // Quick mode
-        if (!text) return;
 
-        generatedCodeSpan.textContent = '...';
-        codeDisplayArea.classList.remove('hidden');
-        subtleCodeDisplay.classList.remove('hidden');
+        updateExpireTime(data.expiresAt);
+        trackInteraction(data.code, data.expiresAt, data.createdAt);
+    } catch (err) {
+        const message = err.status === 429 ? formatRateLimitMessage(err.retryAfter)
+                      : (isSession ? 'Failed to sync' : 'Failed to save');
 
-        try {
-            const data = await createPaste({ text, customCode: null });
+        // Only log unexpected errors (not rate limits)
+        if (err.status !== 429) {
+            console.error('Error saving paste:', err);
+        }
 
-            generatedCodeSpan.textContent = data.code;
-            subtleCodeSpan.textContent = data.code;
-            setTimeout(() => codeDisplayArea.classList.add('hidden'), 5000);
+        showToast(message, 'error');
 
-            updateExpireTime(data.expiresAt);
-            trackInteraction(data.code, data.expiresAt);
-        } catch (err) {
-            console.error('Error:', err);
-            const message = err.status === 429 ? formatRateLimitMessage(err.retryAfter)
-                          : err.message || 'Failed to save';
-            showToast(message, 'error');
+        if (!isSession) {
             codeDisplayArea.classList.add('hidden');
+            subtleCodeDisplay.classList.add('hidden');
+        }
+    } finally {
+        if (isSession) {
+            isSyncing = false;
         }
     }
 }
@@ -389,7 +398,7 @@ async function retrieveContent() {
     try {
         const data = await getPaste(code);
         updateExpireTime(data.expiresAt);
-        trackInteraction(code, data.expiresAt);
+        trackInteraction(code, data.expiresAt, data.createdAt);
 
         if (code.length === PASTE.SESSION_CODE_LENGTH) {
             switchMode('session', code);

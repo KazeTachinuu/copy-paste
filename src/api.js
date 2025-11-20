@@ -14,7 +14,25 @@ export async function createPaste(data) {
     });
     return result;
   } catch (error) {
-    // Transform Convex errors to match old API format
+    // Parse ConvexError data
+    let errorData = null;
+    try {
+      const match = error.message?.match(/\{.*\}/);
+      if (match) {
+        errorData = JSON.parse(match[0]);
+      }
+    } catch {}
+
+    // Handle rate limit errors
+    if (errorData?.kind === 'RateLimited') {
+      const err = new Error('Rate limited');
+      err.status = 429;
+      const retryMs = (errorData.retryAt || Date.now()) - Date.now();
+      err.retryAfter = Math.max(0, Math.ceil(retryMs / 1000));
+      throw err;
+    }
+
+    // Transform other Convex errors
     const err = new Error(error.message || 'Failed to create paste');
     err.status = 500;
     throw err;
@@ -31,9 +49,27 @@ export async function getPaste(code) {
     const result = await convex.query(api.pastes.getPaste, { code });
     return result;
   } catch (error) {
-    // Transform Convex errors to match old API format
+    // Parse ConvexError data
+    let errorData = null;
+    try {
+      const match = error.message?.match(/\{.*\}/);
+      if (match) {
+        errorData = JSON.parse(match[0]);
+      }
+    } catch {}
+
+    // Handle rate limit errors
+    if (errorData?.kind === 'RateLimited') {
+      const err = new Error('Rate limited');
+      err.status = 429;
+      const retryMs = (errorData.retryAt || Date.now()) - Date.now();
+      err.retryAfter = Math.max(0, Math.ceil(retryMs / 1000));
+      throw err;
+    }
+
+    // Transform other Convex errors
     const err = new Error(error.message || 'Failed to get paste');
-    err.status = error.message.includes('not found') ? 404 : 500;
+    err.status = error.message?.includes('not found') ? 404 : 500;
     throw err;
   }
 }

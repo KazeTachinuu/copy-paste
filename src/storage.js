@@ -45,7 +45,7 @@ export function cleanupExpiredPastes() {
 
 /**
  * Get active (non-expired) pastes with metadata
- * @returns {Array<{code: string, expiresAt: number, expiresIn: number}>}
+ * @returns {Array<{code: string, expiresAt: number, expiresIn: number, createdAt: number|null}>}
  */
 export function getActivePastes() {
   // Cleanup expired pastes first
@@ -57,7 +57,8 @@ export function getActivePastes() {
     .map(p => ({
       code: p.code,
       expiresAt: p.expiresAt,
-      expiresIn: Math.max(0, Math.floor((p.expiresAt - now) / 1000))
+      expiresIn: Math.max(0, Math.floor((p.expiresAt - now) / 1000)),
+      createdAt: p.createdAt || null
     }));
 }
 
@@ -65,15 +66,17 @@ export function getActivePastes() {
  * Add paste with expiration timestamp
  * @param {string} code
  * @param {number} expiresAt - Unix timestamp in milliseconds
+ * @param {number} createdAt - Unix timestamp in milliseconds
  */
-export function trackInteraction(code, expiresAt) {
+export function trackInteraction(code, expiresAt, createdAt) {
   if (!code || typeof code !== 'string') return;
   if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt) || expiresAt < 0) return;
+  if (typeof createdAt !== 'number' || !Number.isFinite(createdAt) || createdAt < 0) return;
 
   try {
     let pastes = getAllStoredPastes();
     pastes = pastes.filter(p => p.code !== code);
-    pastes.unshift({ code, expiresAt });
+    pastes.unshift({ code, expiresAt, createdAt });
     const trimmed = pastes.slice(0, MAX_STORED_CODES);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch (error) {
