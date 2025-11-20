@@ -5,8 +5,9 @@
 
 export const PASTE = {
   CODE_LENGTH: 4,
-  MAX_IMAGE_SIZE: 10 * 1024 * 1024, // 10MB
+  SESSION_CODE_LENGTH: 5,
   EXPIRATION_MS: 10 * 60 * 1000, // 10 minutes
+  SESSION_EXPIRATION_MS: 2 * 60 * 60 * 1000, // 2 hours
   MAX_STORE_SIZE: 500, // Maximum number of active pastes
 };
 
@@ -28,9 +29,3 @@ export const RATE_LIMIT = {
 export const API = {
   TIMEOUT: 30000, // 30 seconds request timeout
 };
-
-// Allowed image MIME types
-export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-
-// Regex for validating image data URLs
-export const IMAGE_DATA_URL_REGEX = /^data:image\/(jpeg|jpg|png|gif|webp);base64,/;

@@ -1,10 +1,9 @@
 import './shared.css';
 import './style.css';
-import { createIcons, Copy, Download, X, ArrowRight, Sun, Moon, List } from 'lucide';
-import DOMPurify from 'isomorphic-dompurify';
+import { createIcons, Copy, ArrowRight, Sun, Moon, List } from 'lucide';
 import { createPaste, getPaste } from './api.js';
 import { showToast, formatRateLimitMessage } from './ui.js';
-import { PASTE, UI, ALLOWED_IMAGE_TYPES } from '../config/constants.js';
+import { PASTE, UI } from '../config/constants.js';
 import { initThemeToggle } from './theme.js';
 import { trackInteraction, cleanupExpiredPastes } from './storage.js';
 
@@ -17,22 +16,50 @@ const subtleCodeSpan = document.getElementById('subtle-code');
 const copyCodeBtn = document.getElementById('copy-code-btn');
 const codeInput = document.getElementById('code-input');
 const getTextBtn = document.getElementById('get-text-btn');
-const imagePreviewContainer = document.getElementById('image-preview-container');
-const imagePreview = document.getElementById('image-preview');
-const clearImageBtn = document.getElementById('clear-image-btn');
-const downloadImageBtn = document.getElementById('download-image-btn');
 const copyTextBtn = document.getElementById('copy-text-btn');
-const dropOverlay = document.getElementById('drop-overlay');
-const inputWrapper = document.querySelector('.input-wrapper');
+const modeButtons = document.querySelectorAll('.mode-btn');
+const widgetLabel = document.getElementById('widget-label');
+const expireTimeSpan = document.getElementById('expire-time');
+const syncStatusSpan = document.getElementById('sync-status');
 
 // State
 let debounceTimer;
-let currentImage = null;
+let currentMode = 'quick';
+let currentSessionCode = null;
+let pollInterval = null;
+let lastSyncedText = '';
+let isSyncing = false;
+
+function updateExpireTime(expiresAt) {
+    if (!expiresAt) {
+        expireTimeSpan.classList.add('hidden');
+        return;
+    }
+
+    const now = Date.now();
+    const timeLeft = expiresAt - now;
+
+    if (timeLeft <= 0) {
+        expireTimeSpan.textContent = 'Expired';
+        expireTimeSpan.classList.remove('hidden');
+        return;
+    }
+
+    const minutes = Math.floor(timeLeft / 60000);
+    const hours = Math.floor(minutes / 60);
+
+    if (hours > 0) {
+        expireTimeSpan.textContent = `Expires in ${hours}h ${minutes % 60}m`;
+    } else {
+        expireTimeSpan.textContent = `Expires in ${minutes}m`;
+    }
+    expireTimeSpan.classList.remove('hidden');
+}
 
 initThemeToggle();
 cleanupExpiredPastes();
 createIcons({
-    icons: { Copy, Download, X, ArrowRight, Sun, Moon, List }
+    icons: { Copy, ArrowRight, Sun, Moon, List }
 });
 
 // Check icon SVG for button feedback
@@ -41,78 +68,130 @@ const checkIconHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="non
 // Handle URL parameter for code (from list page)
 const urlParams = new URLSearchParams(window.location.search);
 const codeFromUrl = urlParams.get('code');
-if (codeFromUrl && codeFromUrl.length === PASTE.CODE_LENGTH) {
+if (codeFromUrl && (codeFromUrl.length === PASTE.CODE_LENGTH || codeFromUrl.length === PASTE.SESSION_CODE_LENGTH)) {
     codeInput.value = codeFromUrl;
     setTimeout(() => retrieveContent(), 100);
 }
 
+function generateSessionCode() {
+    let code = '';
+    for (let i = 0; i < PASTE.SESSION_CODE_LENGTH; i++) {
+        code += Math.floor(Math.random() * 10);
+    }
+    return code;
+}
+
+function startPolling() {
+    if (pollInterval) return; // Already polling
+
+    // Show sync indicator
+    if (syncStatusSpan) {
+        syncStatusSpan.textContent = 'Live';
+        syncStatusSpan.classList.remove('hidden');
+    }
+
+    pollInterval = setInterval(async () => {
+        if (currentMode !== 'session' || !currentSessionCode || isSyncing) return;
+
+        try {
+            const data = await getPaste(currentSessionCode);
+
+            // Only update if text is different and we're not currently typing
+            if (data.text !== mainTextarea.value && data.text !== lastSyncedText) {
+                const cursorPosition = mainTextarea.selectionStart;
+                const isAtEnd = cursorPosition === mainTextarea.value.length;
+
+                mainTextarea.value = data.text;
+                lastSyncedText = data.text;
+
+                // Restore cursor position (if at end, keep at end)
+                if (isAtEnd) {
+                    mainTextarea.selectionStart = mainTextarea.selectionEnd = mainTextarea.value.length;
+                } else {
+                    mainTextarea.selectionStart = mainTextarea.selectionEnd = Math.min(cursorPosition, mainTextarea.value.length);
+                }
+            }
+
+            updateExpireTime(data.expiresAt);
+        } catch (err) {
+            // Session might have expired or been deleted
+            if (err.status === 404) {
+                stopPolling();
+                showToast('Session expired', 'error');
+            }
+        }
+    }, 2000); // Poll every 2 seconds
+}
+
+function stopPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+
+    // Hide sync indicator
+    if (syncStatusSpan) {
+        syncStatusSpan.classList.add('hidden');
+    }
+}
+
+function switchMode(mode, sessionCode = null) {
+    currentMode = mode;
+    modeButtons.forEach(b => b.classList.remove('active'));
+    document.querySelector(`[data-mode="${mode}"]`).classList.add('active');
+
+    // Stop polling when leaving session mode
+    if (mode !== 'session') {
+        stopPolling();
+    }
+
+    if (mode === 'session') {
+        widgetLabel.textContent = 'Session Code';
+        codeInput.placeholder = 'Optional';
+        codeInput.maxLength = 5;
+        getTextBtn.title = 'Join Session';
+        mainTextarea.placeholder = 'Start typing to create a session...';
+        codeDisplayArea.classList.add('hidden');
+
+        if (sessionCode) {
+            currentSessionCode = sessionCode;
+            codeInput.value = sessionCode;
+            subtleCodeSpan.textContent = sessionCode;
+            subtleCodeDisplay.classList.remove('hidden');
+            startPolling();
+        } else {
+            codeInput.value = '';
+            subtleCodeDisplay.classList.add('hidden');
+            currentSessionCode = null;
+        }
+    } else {
+        widgetLabel.textContent = 'Retrieve Code';
+        codeInput.placeholder = 'Enter Code';
+        codeInput.maxLength = 4;
+        getTextBtn.title = 'Get Text';
+        mainTextarea.placeholder = 'Paste text here...';
+        codeInput.value = '';
+        codeDisplayArea.classList.add('hidden');
+        subtleCodeDisplay.classList.add('hidden');
+        currentSessionCode = null;
+    }
+}
+
 // Event Listeners
+modeButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (btn.dataset.mode !== currentMode) {
+            switchMode(btn.dataset.mode);
+        }
+    });
+});
+
+codeInput.addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/\D/g, '');
+});
+
 mainTextarea.addEventListener('input', () => {
     handleInput();
-});
-
-window.addEventListener('paste', (e) => {
-    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-
-    for (const item of items) {
-        if (item.type.indexOf('image') === 0) {
-            e.preventDefault();
-            const blob = item.getAsFile();
-            if (blob.size > PASTE.MAX_IMAGE_SIZE) {
-                const maxMB = PASTE.MAX_IMAGE_SIZE / 1024 / 1024;
-                showToast(`Image too large (max ${maxMB}MB)`, 'error');
-                return;
-            }
-            processImage(blob);
-            return;
-        }
-    }
-});
-
-window.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropOverlay.classList.add('active');
-});
-
-window.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    if (e.relatedTarget === null || !inputWrapper.contains(e.relatedTarget)) {
-        dropOverlay.classList.remove('active');
-    }
-});
-
-window.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropOverlay.classList.remove('active');
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-        const file = e.dataTransfer.files[0];
-        if (file.type.startsWith('image/')) {
-            if (file.size > PASTE.MAX_IMAGE_SIZE) {
-                const maxMB = PASTE.MAX_IMAGE_SIZE / 1024 / 1024;
-                showToast(`Image too large (max ${maxMB}MB)`, 'error');
-                return;
-            }
-            processImage(file);
-        }
-    }
-});
-
-clearImageBtn.addEventListener('click', () => {
-    clearImage();
-    mainTextarea.focus();
-});
-
-downloadImageBtn.addEventListener('click', () => {
-    if (currentImage) {
-        const link = document.createElement('a');
-        link.href = currentImage;
-        link.download = `pasted-image-${Date.now()}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        showButtonFeedback(downloadImageBtn, true, 'Image downloaded!');
-    }
 });
 
 copyTextBtn.addEventListener('click', () => {
@@ -129,9 +208,39 @@ copyTextBtn.addEventListener('click', () => {
     }
 });
 
-getTextBtn.addEventListener('click', retrieveContent);
+getTextBtn.addEventListener('click', async () => {
+    if (currentMode === 'session') {
+        // Join a session by code
+        const code = codeInput.value.trim();
+        if (code.length !== PASTE.SESSION_CODE_LENGTH) {
+            showToast('Enter a 5-digit session code', 'error');
+            return;
+        }
+
+        try {
+            const data = await getPaste(code);
+            currentSessionCode = code;
+            mainTextarea.value = data.text || '';
+            lastSyncedText = data.text || '';
+            subtleCodeSpan.textContent = code;
+            subtleCodeDisplay.classList.remove('hidden');
+            updateExpireTime(data.expiresAt);
+            trackInteraction(code, data.expiresAt);
+            startPolling();
+            showToast('Joined session!', 'success');
+            codeInput.value = '';
+        } catch (err) {
+            showToast('Session not found', 'error');
+        }
+    } else {
+        retrieveContent();
+    }
+});
+
 codeInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') retrieveContent();
+    if (e.key === 'Enter') {
+        getTextBtn.click();
+    }
 });
 
 copyCodeBtn.addEventListener('click', (e) => {
@@ -168,137 +277,82 @@ function showButtonFeedback(button, showToastMessage = false, toastMessage = '')
 function handleInput() {
     const text = mainTextarea.value.trim();
 
-    if (!text && !currentImage) {
+    if (!text) {
         codeDisplayArea.classList.add('hidden');
-        subtleCodeDisplay.classList.add('hidden');
+        if (currentMode === 'quick') {
+            subtleCodeDisplay.classList.add('hidden');
+        }
         return;
+    }
+
+    // Auto-generate session code if in session mode and no code exists
+    if (currentMode === 'session' && !currentSessionCode) {
+        currentSessionCode = generateSessionCode();
+        subtleCodeSpan.textContent = currentSessionCode;
+        subtleCodeDisplay.classList.remove('hidden');
+        showToast(`Session created: ${currentSessionCode}`, 'success');
+        startPolling();
     }
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-        generateCode();
+        saveSessionContent();
     }, UI.DEBOUNCE_DELAY);
 }
 
-function isValidImageDataUrl(dataUrl) {
-  if (!dataUrl || typeof dataUrl !== 'string') return false;
-  if (!dataUrl.startsWith('data:image/')) return false;
-
-  const mimeMatch = dataUrl.match(/^data:(image\/[^;]+);base64,/);
-  if (!mimeMatch) return false;
-
-  const mimeType = mimeMatch[1];
-  if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) return false;
-
-  const base64Part = dataUrl.split(',')[1];
-  if (!base64Part || !/^[A-Za-z0-9+/=]+$/.test(base64Part)) return false;
-
-  return true;
-}
-
-function processImage(blob) {
-  if (!blob.type.startsWith('image/')) {
-    showToast('Please select an image file', 'error');
-    return;
-  }
-
-  if (blob.type === 'image/svg+xml') {
-    showToast('SVG images are not supported for security reasons', 'error');
-    return;
-  }
-
-  if (blob.size > PASTE.MAX_IMAGE_SIZE) {
-    const maxMB = PASTE.MAX_IMAGE_SIZE / 1024 / 1024;
-    showToast(`Image must be smaller than ${maxMB}MB`, 'error');
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const dataUrl = event.target.result;
-
-    if (!isValidImageDataUrl(dataUrl)) {
-      showToast('Invalid or unsupported image format', 'error');
-      return;
-    }
-
-    currentImage = dataUrl;
-    showImagePreview(dataUrl);
-    generateCode();
-  };
-
-  reader.onerror = () => {
-    showToast('Failed to read image file', 'error');
-  };
-
-  reader.readAsDataURL(blob);
-}
-
-function showImagePreview(base64) {
-  if (!isValidImageDataUrl(base64)) {
-    showToast('Invalid or unsafe image data', 'error');
-    clearImage();
-    return;
-  }
-
-  const sanitized = DOMPurify.sanitize(base64);
-  imagePreview.src = sanitized;
-  imagePreviewContainer.classList.remove('hidden');
-  mainTextarea.placeholder = 'Add a caption...';
-}
-
-function clearImage() {
-    currentImage = null;
-    imagePreview.src = '';
-    imagePreviewContainer.classList.add('hidden');
-    mainTextarea.placeholder = 'Paste text or image here...';
-    if (!mainTextarea.value.trim()) {
-        codeDisplayArea.classList.add('hidden');
-        subtleCodeDisplay.classList.add('hidden');
-    } else {
-        generateCode();
-    }
-}
-
-async function generateCode() {
+async function saveSessionContent() {
     const text = mainTextarea.value.trim();
 
-    if (!text && !currentImage) return;
+    if (currentMode === 'session') {
+        if (!currentSessionCode || !text) return;
 
-    generatedCodeSpan.textContent = '...';
-    subtleCodeSpan.textContent = '...';
-    codeDisplayArea.classList.remove('hidden');
-    subtleCodeDisplay.classList.remove('hidden');
+        isSyncing = true;
+        try {
+            const payload = { text, customCode: currentSessionCode };
+            const data = await createPaste(payload);
 
-    const payload = {};
-    if (text) payload.text = text;
-    if (currentImage) payload.image = currentImage;
+            lastSyncedText = text;
+            updateExpireTime(data.expiresAt);
+            trackInteraction(data.code, data.expiresAt);
+        } catch (err) {
+            console.error('Error saving session:', err);
+            const message = err.status === 429 ? formatRateLimitMessage(err.retryAfter)
+                          : 'Failed to sync';
+            showToast(message, 'error');
+        } finally {
+            isSyncing = false;
+        }
+    } else {
+        // Quick mode
+        if (!text) return;
 
-    try {
-        const data = await createPaste(payload);
-        generatedCodeSpan.textContent = data.code;
-        subtleCodeSpan.textContent = data.code;
-        trackInteraction(data.code, data.expiresAt);
+        generatedCodeSpan.textContent = '...';
+        codeDisplayArea.classList.remove('hidden');
+        subtleCodeDisplay.classList.remove('hidden');
 
-        setTimeout(() => {
+        try {
+            const data = await createPaste({ text, customCode: null });
+
+            generatedCodeSpan.textContent = data.code;
+            subtleCodeSpan.textContent = data.code;
+            setTimeout(() => codeDisplayArea.classList.add('hidden'), 5000);
+
+            updateExpireTime(data.expiresAt);
+            trackInteraction(data.code, data.expiresAt);
+        } catch (err) {
+            console.error('Error:', err);
+            const message = err.status === 429 ? formatRateLimitMessage(err.retryAfter)
+                          : err.message || 'Failed to save';
+            showToast(message, 'error');
             codeDisplayArea.classList.add('hidden');
-        }, 5000);
-    } catch (err) {
-        console.error('Error generating code:', err);
-        if (err.status === 413) {
-            showToast('Image is too large to upload.', 'error');
-        } else if (err.status === 429) {
-            showToast(formatRateLimitMessage(err.retryAfter), 'error');
-        } else {
-            showToast('Error generating code: ' + (err.message || 'Unknown error'), 'error');
         }
     }
 }
 
 async function retrieveContent() {
     const code = codeInput.value.trim();
-    if (code.length !== PASTE.CODE_LENGTH) {
-        showToast(`Please enter a ${PASTE.CODE_LENGTH}-digit code`, 'error');
+    if (code.length !== PASTE.CODE_LENGTH && code.length !== PASTE.SESSION_CODE_LENGTH) {
+        showToast(`Please enter a ${PASTE.CODE_LENGTH} or ${PASTE.SESSION_CODE_LENGTH}-digit code`, 'error');
         return;
     }
 
@@ -308,20 +362,17 @@ async function retrieveContent() {
 
     try {
         const data = await getPaste(code);
-
+        updateExpireTime(data.expiresAt);
         trackInteraction(code, data.expiresAt);
 
-        if (data.image) {
-            currentImage = data.image;
-            showImagePreview(data.image);
+        if (code.length === PASTE.SESSION_CODE_LENGTH) {
+            switchMode('session', code);
         } else {
-            clearImage();
+            codeInput.value = '';
         }
 
         mainTextarea.value = data.text || '';
-
         codeDisplayArea.classList.add('hidden');
-        codeInput.value = '';
         showToast('Content retrieved!', 'success');
     } catch (err) {
         console.error(err);
@@ -335,5 +386,3 @@ async function retrieveContent() {
         getTextBtn.disabled = false;
     }
 }
-
-

@@ -40,6 +40,8 @@
     <div id="subtle-code-display" class="subtle-code hidden">
       <span class="subtle-label">YOUR CODE</span>
       <span id="subtle-code" class="subtle-code-value">----</span>
+      <span id="sync-status" class="sync-status hidden"></span>
+      <span id="expire-time" class="expire-time hidden"></span>
     </div>
 
     <!-- Code Display (Top Right - Dismissible) -->
@@ -55,34 +57,27 @@
 
     <!-- Main Text Area -->
     <div class="main-container">
+      <!-- Mode Toggle -->
+      <div class="mode-toggle">
+        <button class="mode-btn active" data-mode="quick">Quick Paste</button>
+        <button class="mode-btn" data-mode="session">Session</button>
+      </div>
+
       <div class="input-wrapper">
         <div id="content-stack">
-          <div id="image-preview-container" class="hidden">
-            <img id="image-preview" src="" alt="Pasted Image" />
-            <div class="image-controls">
-              <button id="download-image-btn" class="icon-btn" title="Download Image">
-                <i data-lucide="download" width="20" height="20"></i>
-              </button>
-              <button id="clear-image-btn" class="icon-btn" title="Clear Image">
-                <i data-lucide="x" width="20" height="20"></i>
-              </button>
-            </div>
-          </div>
           <div class="textarea-container">
-            <textarea id="main-textarea" placeholder="Paste text or image here..."></textarea>
+            <textarea id="main-textarea" placeholder="Paste text here..."></textarea>
             <button id="copy-text-btn" class="icon-btn" title="Copy Text">
               <i data-lucide="copy" width="20" height="20"></i>
             </button>
           </div>
         </div>
-        <div id="drop-overlay" class="hidden">
-          <span>Drop Image Here</span>
-        </div>
       </div>
     </div>
 
-    <!-- Floating Retrieval Widget (Bottom Right) -->
+    <!-- Floating Widget (Bottom Right) -->
     <div class="floating-widget">
+      <label id="widget-label" class="widget-label">Retrieve Code</label>
       <div class="widget-content">
         <input type="text" id="code-input" placeholder="Enter Code" maxlength="4" pattern="\d*">
         <button id="get-text-btn" class="icon-btn primary" title="Get Text">

@@ -1,23 +1,6 @@
 import 'dotenv/config';
-import Joi from 'joi';
 import { createPaste, getPaste } from '../../lib/store.js';
-import { PASTE, IMAGE_DATA_URL_REGEX } from '../../config/constants.js';
-
-const pasteSchema = Joi.object({
-  text: Joi.string().max(100000).allow(null),
-  image: Joi.string().pattern(IMAGE_DATA_URL_REGEX).allow(null),
-}).or('text', 'image').messages({
-  'object.missing': 'At least one of "text" or "image" must be provided and non-empty'
-});
-
-function validateImageSize(base64String) {
-  if (!base64String) return true;
-  const base64Data = base64String.split(',')[1];
-  if (!base64Data) return false;
-  const padding = (base64Data.match(/=/g) || []).length;
-  const sizeInBytes = ((base64Data.length - padding) * 3) / 4;
-  return sizeInBytes <= PASTE.MAX_IMAGE_SIZE;
-}
+import { PASTE } from '../../config/constants.js';
 
 function setCorsHeaders(res, origin) {
   const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
@@ -43,24 +26,22 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
-      const { error, value } = pasteSchema.validate(req.body);
+      const { text, customCode } = req.body;
 
-      if (error) {
+      // Basic validation
+      if (!text?.trim()) {
         return res.status(400).json({
-          error: 'Invalid input',
-          details: error.details[0].message
+          error: 'Text required'
         });
       }
 
-      const { text, image } = value;
-
-      if (image && !validateImageSize(image)) {
-        return res.status(413).json({
-          error: `Image too large. Maximum size is ${PASTE.MAX_IMAGE_SIZE / 1024 / 1024}MB`
+      if (customCode && !/^\d{5}$/.test(customCode)) {
+        return res.status(400).json({
+          error: 'Custom code must be 5 digits'
         });
       }
 
-      const result = await createPaste({ text, image });
+      const result = await createPaste({ text, customCode });
       return res.status(200).json(result);
     } catch (error) {
       console.error('Error creating paste:', error);
@@ -95,7 +76,6 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         text: paste.text,
-        image: paste.image,
         expiresAt: paste.expiresAt
       });
     } catch (error) {

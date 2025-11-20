@@ -4,7 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import Joi from 'joi';
 import { createPaste, getPaste } from '../lib/store.js';
-import { PASTE, ALLOWED_IMAGE_TYPES, IMAGE_DATA_URL_REGEX } from '../config/constants.js';
+import { PASTE } from '../config/constants.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,7 +15,6 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       scriptSrc: ["'self'"],
@@ -47,20 +46,11 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 
 const pasteSchema = Joi.object({
-  text: Joi.string().max(100000).allow(null),
-  image: Joi.string().pattern(IMAGE_DATA_URL_REGEX).allow(null),
-}).or('text', 'image').messages({
-  'object.missing': 'At least one of "text" or "image" must be provided and non-empty'
+  text: Joi.string().max(100000).required(),
+  customCode: Joi.string().pattern(/^\d{5}$/).allow(null),
+}).messages({
+  'string.empty': 'Text is required'
 });
-
-function validateImageSize(base64String) {
-  if (!base64String) return true;
-  const base64Data = base64String.split(',')[1];
-  if (!base64Data) return false;
-  const padding = (base64Data.match(/=/g) || []).length;
-  const sizeInBytes = ((base64Data.length - padding) * 3) / 4;
-  return sizeInBytes <= PASTE.MAX_IMAGE_SIZE;
-}
 
 app.post('/api/paste', async (req, res) => {
   try {
@@ -73,15 +63,9 @@ app.post('/api/paste', async (req, res) => {
       });
     }
 
-    const { text, image } = value;
+    const { text, customCode } = value;
 
-    if (image && !validateImageSize(image)) {
-      return res.status(413).json({
-        error: `Image too large. Maximum size is ${PASTE.MAX_IMAGE_SIZE / 1024 / 1024}MB`
-      });
-    }
-
-    const result = await createPaste({ text, image });
+    const result = await createPaste({ text, customCode });
     res.json(result);
   } catch (error) {
     console.error('Error creating paste:', error.message);
@@ -100,7 +84,6 @@ app.get('/api/paste/:code', async (req, res) => {
 
     res.json({
       text: paste.text,
-      image: paste.image,
       expiresAt: paste.expiresAt
     });
   } catch (error) {

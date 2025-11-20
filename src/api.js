@@ -75,7 +75,7 @@ async function handleResponse(response, defaultMessage = 'Request failed') {
 
 /**
  * Create a new paste
- * @param {Object} data - { text, image }
+ * @param {Object} data - { text, customCode }
  * @returns {Promise<Object>} - { code, expiresAt }
  */
 export async function createPaste(data) {
@@ -91,7 +91,7 @@ export async function createPaste(data) {
 /**
  * Get a paste by code
  * @param {string} code
- * @returns {Promise<Object>} - { text, image }
+ * @returns {Promise<Object>} - { text, expiresAt }
  */
 export async function getPaste(code) {
   const response = await fetchWithTimeout(`${API_URL}/paste/${code}`);
