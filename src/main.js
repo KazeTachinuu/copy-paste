@@ -73,10 +73,19 @@ if (codeFromUrl && (codeFromUrl.length === PASTE.CODE_LENGTH || codeFromUrl.leng
     setTimeout(() => retrieveContent(), 100);
 }
 
+// Generate session code with cryptographically secure random
+// Using safe character set (no confusing 0/O, 1/I/L, B/8)
 function generateSessionCode() {
+    const chars = '23456789ACDEFGHJKLMNPQRSTUVWXYZ';
     let code = '';
+
+    // Use crypto.getRandomValues for cryptographically secure random
+    const randomValues = new Uint32Array(PASTE.SESSION_CODE_LENGTH);
+    crypto.getRandomValues(randomValues);
+
     for (let i = 0; i < PASTE.SESSION_CODE_LENGTH; i++) {
-        code += Math.floor(Math.random() * 10);
+        // Use modulo to map random value to character index
+        code += chars[randomValues[i] % chars.length];
     }
     return code;
 }
@@ -182,7 +191,10 @@ modeButtons.forEach(btn => {
 });
 
 codeInput.addEventListener('input', (e) => {
-    e.target.value = e.target.value.replace(/\D/g, '');
+    // Allow alphanumeric from safe set, convert to uppercase
+    e.target.value = e.target.value
+        .toUpperCase()
+        .replace(/[^23456789ACDEFGHJKLMNPQRSTUVWXYZ]/g, '');
 });
 
 mainTextarea.addEventListener('input', () => {

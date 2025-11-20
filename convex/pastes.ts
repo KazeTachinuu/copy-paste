@@ -1,20 +1,32 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, MutationCtx, QueryCtx } from "./_generated/server";
 import { Doc } from "./_generated/dataModel";
+import { rateLimit } from "convex-helpers/server/rateLimit";
 
-// Constants
-const QUICK_PASTE_EXPIRY = 15 * 60 * 1000; // 15 minutes
-const SESSION_PASTE_EXPIRY = 60 * 60 * 1000; // 1 hour
+const QUICK_PASTE_EXPIRY = 15 * 60 * 1000;
+const SESSION_PASTE_EXPIRY = 60 * 60 * 1000;
 const CODE_LENGTH = 4;
 const SESSION_CODE_LENGTH = 5;
-const MAX_TEXT_LENGTH = 100000; // 100KB
+const MAX_TEXT_LENGTH = 100000;
 
-// Helper: Generate random numeric code
+const RATE_LIMIT_CONFIG = {
+  kind: "token bucket" as const,
+  rate: 10,
+  period: 60000,
+  capacity: 15,
+  maxReserved: 5,
+};
+
 function generateCode(length: number): string {
-  return Array.from({ length }, () => Math.floor(Math.random() * 10)).join("");
+  const chars = '23456789ACDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < length; i++) {
+    const randomValue = crypto.getRandomValues(new Uint32Array(1))[0];
+    code += chars[randomValue % chars.length];
+  }
+  return code;
 }
 
-// Helper: Find paste by code
 async function findPasteByCode(
   ctx: QueryCtx | MutationCtx,
   code: string
@@ -25,62 +37,52 @@ async function findPasteByCode(
     .first();
 }
 
-// Mutation: Create or update a paste
 export const createPaste = mutation({
   args: {
     text: v.string(),
     customCode: v.optional(v.string()),
   },
   handler: async (ctx, { text, customCode }) => {
-    // Validate text
-    if (!text.trim()) {
-      throw new Error("Text is required");
-    }
-
+    if (!text.trim()) throw new Error("Text is required");
     if (text.length > MAX_TEXT_LENGTH) {
       throw new Error(`Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
     }
+
+    await rateLimit(ctx, {
+      name: "createPaste",
+      throws: true,
+      config: RATE_LIMIT_CONFIG,
+    });
 
     const now = Date.now();
     let code: string;
     let expiresAt: number;
     let type: "quick" | "session";
 
-    // Handle custom code (session mode)
     if (customCode !== undefined) {
-      if (!/^\d{5}$/.test(customCode)) {
-        throw new Error("Custom code must be 5 digits");
+      if (!/^[23456789ACDEFGHJKLMNPQRSTUVWXYZ]{5}$/i.test(customCode)) {
+        throw new Error("Custom code must be 5 alphanumeric characters");
       }
-
-      code = customCode;
+      code = customCode.toUpperCase();
       type = "session";
       expiresAt = now + SESSION_PASTE_EXPIRY;
 
-      // Update existing or create new
       const existing = await findPasteByCode(ctx, code);
       if (existing) {
-        await ctx.db.patch(existing._id, {
-          text,
-          expiresAt,
-        });
+        await ctx.db.patch(existing._id, { text, expiresAt });
         return { code, text, expiresAt, type };
       }
     } else {
-      // Generate unique code for quick paste
       let attempts = 0;
       do {
         code = generateCode(CODE_LENGTH);
-        attempts++;
-        if (attempts > 10) {
-          throw new Error("Failed to generate unique code");
-        }
+        if (++attempts > 10) throw new Error("Failed to generate unique code");
       } while (await findPasteByCode(ctx, code));
 
       type = "quick";
       expiresAt = now + QUICK_PASTE_EXPIRY;
     }
 
-    // Create new paste
     await ctx.db.insert("pastes", {
       code,
       text,
@@ -93,26 +95,20 @@ export const createPaste = mutation({
   },
 });
 
-// Query: Get a paste by code
 export const getPaste = query({
-  args: {
-    code: v.string(),
-  },
+  args: { code: v.string() },
   handler: async (ctx, { code }) => {
-    // Validate code format
-    const isValidLength = code.length === CODE_LENGTH || code.length === SESSION_CODE_LENGTH;
-    if (!isValidLength) {
-      throw new Error(`Code must be ${CODE_LENGTH} or ${SESSION_CODE_LENGTH} digits`);
+    code = code.toUpperCase();
+
+    if (code.length !== CODE_LENGTH && code.length !== SESSION_CODE_LENGTH) {
+      throw new Error(`Code must be ${CODE_LENGTH} or ${SESSION_CODE_LENGTH} characters`);
+    }
+    if (!/^[23456789ACDEFGHJKLMNPQRSTUVWXYZ]+$/.test(code)) {
+      throw new Error("Code contains invalid characters");
     }
 
     const paste = await findPasteByCode(ctx, code);
-
-    if (!paste) {
-      throw new Error("Paste not found or expired");
-    }
-
-    // Check if expired
-    if (paste.expiresAt < Date.now()) {
+    if (!paste || paste.expiresAt < Date.now()) {
       throw new Error("Paste not found or expired");
     }
 
@@ -124,16 +120,11 @@ export const getPaste = query({
   },
 });
 
-// Query: Watch a paste by code (for real-time subscriptions)
-// Returns null instead of throwing when paste doesn't exist yet
 export const watchPaste = query({
-  args: {
-    code: v.string(),
-  },
+  args: { code: v.string() },
   handler: async (ctx, { code }) => {
-    const paste = await findPasteByCode(ctx, code);
+    const paste = await findPasteByCode(ctx, code.toUpperCase());
 
-    // Return null if paste doesn't exist or is expired
     if (!paste || paste.expiresAt < Date.now()) {
       return null;
     }
@@ -146,7 +137,6 @@ export const watchPaste = query({
   },
 });
 
-// Internal Mutation: Clean up expired pastes (called by cron job)
 export const cleanupExpired = internalMutation({
   handler: async (ctx) => {
     const now = Date.now();
@@ -155,12 +145,10 @@ export const cleanupExpired = internalMutation({
       .withIndex("by_expiration", (q) => q.lt("expiresAt", now))
       .collect();
 
-    let deleted = 0;
     for (const paste of expired) {
       await ctx.db.delete(paste._id);
-      deleted++;
     }
 
-    return { deleted };
+    return { deleted: expired.length };
   },
 });

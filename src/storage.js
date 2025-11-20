@@ -62,14 +62,6 @@ export function getActivePastes() {
 }
 
 /**
- * Get active paste codes only
- * @returns {string[]}
- */
-export function getInteractedCodes() {
-  return getActivePastes().map(p => p.code);
-}
-
-/**
  * Add paste with expiration timestamp
  * @param {string} code
  * @param {number} expiresAt - Unix timestamp in milliseconds
@@ -114,13 +106,3 @@ export function deletePaste(code) {
   }
 }
 
-/**
- * Clear all interaction history
- */
-export function clearInteractionHistory() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch (error) {
-    console.error('Failed to clear interaction history:', error);
-  }
-}

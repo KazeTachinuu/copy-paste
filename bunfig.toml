@@ -1,20 +1,7 @@
-# Bun configuration file
-# https://bun.sh/docs/runtime/bunfig
-
 [install]
-# Use exact versions for reproducible builds
 exact = true
-
-# Automatically install peer dependencies
 peer = true
-
-# Optimize for production builds
 production = false
 
 [install.cache]
-# Enable caching for faster installs
 disable = false
-
-[test]
-# Test configuration
-preload = []
