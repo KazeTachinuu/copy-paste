@@ -8,9 +8,8 @@ node_modules
 
 # Development files
 server/           # Local dev server only, not needed in production
-vite.config.js
 
-# Note: lib/ is NOT excluded - it contains shared code used by serverless functions
+# Note: lib/ and vite.config.js are NOT excluded - needed for production build
 
 # Editor files
 .vscode
