@@ -1,6 +1,5 @@
+import { kv } from '@vercel/kv';
 import { PASTE } from '../config/constants.js';
-
-const store = new Map();
 
 /**
  * Generate a random numeric code of specified length
@@ -20,61 +19,64 @@ function generateCode(length) {
  * @param {Object} data - Paste data containing text and/or image
  * @param {string} [data.text] - Text content
  * @param {string} [data.image] - Base64 encoded image
- * @returns {{code: string, expiresAt: number}} Generated code and expiration timestamp
+ * @returns {Promise<{code: string, expiresAt: number}>} Generated code and expiration timestamp
  */
-export function createPaste(data) {
+export async function createPaste(data) {
   let code;
   let attempts = 0;
+  const maxAttempts = 100;
 
+  // Generate unique code
   do {
     code = generateCode(PASTE.CODE_LENGTH);
+    const exists = await kv.exists(code);
+    if (!exists) break;
     attempts++;
-  } while (store.has(code) && attempts < 100);
+  } while (attempts < maxAttempts);
 
-  if (store.has(code)) {
-    throw new Error('Failed to generate unique code. Storage full?');
+  if (attempts >= maxAttempts) {
+    throw new Error('Failed to generate unique code after 100 attempts');
   }
 
-  if (store.size >= PASTE.MAX_STORE_SIZE) {
-    const oldestKey = store.keys().next().value;
-    store.delete(oldestKey);
-  }
-
+  const expiresAt = Date.now() + PASTE.EXPIRATION_MS;
   const paste = {
     text: data.text || '',
     image: data.image || null,
     createdAt: Date.now(),
-    expiresAt: Date.now() + PASTE.EXPIRATION_MS
+    expiresAt
   };
 
-  store.set(code, paste);
+  // Store in Redis with TTL (Time To Live) in seconds
+  const ttlSeconds = Math.ceil(PASTE.EXPIRATION_MS / 1000);
+  await kv.set(code, JSON.stringify(paste), { ex: ttlSeconds });
 
-  setTimeout(() => {
-    const current = store.get(code);
-    if (current && current.createdAt === paste.createdAt) {
-      store.delete(code);
-    }
-  }, PASTE.EXPIRATION_MS);
-
-  return { code, expiresAt: paste.expiresAt };
+  return { code, expiresAt };
 }
 
 /**
  * Retrieve a paste by code
  * @param {string} code - The paste code
- * @returns {Object|null} Paste object or null if not found/expired
+ * @returns {Promise<Object|null>} Paste object or null if not found/expired
  */
-export function getPaste(code) {
-  const paste = store.get(code);
+export async function getPaste(code) {
+  const data = await kv.get(code);
 
-  if (!paste) {
+  if (!data) {
     return null;
   }
 
-  if (Date.now() > paste.expiresAt) {
-    store.delete(code);
+  try {
+    const paste = typeof data === 'string' ? JSON.parse(data) : data;
+
+    // Double-check expiration (Redis TTL should handle this, but be safe)
+    if (paste.expiresAt && Date.now() > paste.expiresAt) {
+      await kv.del(code);
+      return null;
+    }
+
+    return paste;
+  } catch (error) {
+    console.error('Error parsing paste data:', error);
     return null;
   }
-
-  return paste;
 }

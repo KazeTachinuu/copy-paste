@@ -1,0 +1,31 @@
+# Dependencies
+node_modules
+
+# Environment files
+.env
+.env.local
+.env*.local
+
+# Development files
+server/
+vite.config.js
+
+# Editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Claude
+.claude

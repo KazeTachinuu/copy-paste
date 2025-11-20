@@ -4,7 +4,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import Joi from 'joi';
 import { createPaste, getPaste } from './store.js';
-import { rateLimiter } from './middleware/rateLimiter.js';
 import { PASTE, ALLOWED_IMAGE_TYPES, IMAGE_DATA_URL_REGEX } from '../config/constants.js';
 
 const app = express();
@@ -36,7 +35,7 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '10mb' }));
-app.use(rateLimiter);
+// Note: Rate limiting disabled for local dev. Use Vercel's built-in rate limiting in production.
 
 const pasteSchema = Joi.object({
   text: Joi.string().max(100000).allow(null),
@@ -58,7 +57,7 @@ function validateImageSize(base64String) {
  * POST /api/paste
  * Create a new paste with text and/or image
  */
-app.post('/api/paste', (req, res) => {
+app.post('/api/paste', async (req, res) => {
   try {
     // Validate request body
     const { error, value } = pasteSchema.validate(req.body);
@@ -79,7 +78,7 @@ app.post('/api/paste', (req, res) => {
       });
     }
 
-    const result = createPaste({ text, image });
+    const result = await createPaste({ text, image });
     res.json(result);
   } catch (error) {
     console.error('Error creating paste:', error.message);
@@ -91,10 +90,10 @@ app.post('/api/paste', (req, res) => {
  * GET /api/paste/:code
  * Retrieve a paste by its code
  */
-app.get('/api/paste/:code', (req, res) => {
+app.get('/api/paste/:code', async (req, res) => {
   try {
     const { code } = req.params;
-    const paste = getPaste(code);
+    const paste = await getPaste(code);
 
     if (!paste) {
       return res.status(404).json({ error: 'Paste not found or expired' });
