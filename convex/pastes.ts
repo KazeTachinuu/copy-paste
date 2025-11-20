@@ -143,12 +143,12 @@ export const cleanupExpired = internalMutation({
     const expired = await ctx.db
       .query("pastes")
       .withIndex("by_expiration", (q) => q.lt("expiresAt", now))
-      .collect();
+      .take(1000);
 
     for (const paste of expired) {
       await ctx.db.delete(paste._id);
     }
 
-    return { deleted: expired.length };
+    return { deleted: expired.length, hasMore: expired.length === 1000 };
   },
 });
