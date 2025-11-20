@@ -1,18 +1,19 @@
+import './shared.css';
 import './style.css';
-import { createIcons, Copy, Download, X, ArrowRight, Check } from 'lucide';
+import { createIcons, Copy, Download, X, ArrowRight, Sun, Moon, List } from 'lucide';
+import DOMPurify from 'isomorphic-dompurify';
 import { createPaste, getPaste } from './api.js';
-import { showToast } from './ui.js';
-
-// Constants
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
-const DEBOUNCE_DELAY = 1000; // 1 second
-const FEEDBACK_DURATION = 2000; // 2 seconds
-const CODE_LENGTH = 4;
+import { showToast, formatRateLimitMessage } from './ui.js';
+import { PASTE, UI, ALLOWED_IMAGE_TYPES } from '../config/constants.js';
+import { initThemeToggle } from './theme.js';
+import { trackInteraction, cleanupExpiredPastes } from './storage.js';
 
 // DOM Elements
 const mainTextarea = document.getElementById('main-textarea');
 const codeDisplayArea = document.getElementById('code-display-area');
 const generatedCodeSpan = document.getElementById('generated-code');
+const subtleCodeDisplay = document.getElementById('subtle-code-display');
+const subtleCodeSpan = document.getElementById('subtle-code');
 const copyCodeBtn = document.getElementById('copy-code-btn');
 const codeInput = document.getElementById('code-input');
 const getTextBtn = document.getElementById('get-text-btn');
@@ -23,21 +24,29 @@ const downloadImageBtn = document.getElementById('download-image-btn');
 const copyTextBtn = document.getElementById('copy-text-btn');
 const dropOverlay = document.getElementById('drop-overlay');
 const inputWrapper = document.querySelector('.input-wrapper');
-// toastContainer is handled in ui.js
 
 // State
 let debounceTimer;
 let currentImage = null; // Base64 string
 
+// Initialize theme
+initThemeToggle();
+
+// Cleanup expired pastes from localStorage on page load
+cleanupExpiredPastes();
+
 // Initialize Lucide icons
 createIcons({
-    icons: { Copy, Download, X, ArrowRight, Check }
+    icons: { Copy, Download, X, ArrowRight, Sun, Moon, List }
 });
+
+// Check icon SVG for button feedback
+const checkIconHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
 // Handle URL parameter for code (from list page)
 const urlParams = new URLSearchParams(window.location.search);
 const codeFromUrl = urlParams.get('code');
-if (codeFromUrl && codeFromUrl.length === CODE_LENGTH) {
+if (codeFromUrl && codeFromUrl.length === PASTE.CODE_LENGTH) {
     codeInput.value = codeFromUrl;
     // Auto-retrieve after a short delay to let the page load
     setTimeout(() => retrieveContent(), 100);
@@ -59,8 +68,9 @@ window.addEventListener('paste', (e) => {
         if (item.type.indexOf('image') === 0) {
             e.preventDefault();
             const blob = item.getAsFile();
-            if (blob.size > MAX_IMAGE_SIZE) {
-                showToast('Image too large (max 10MB)', 'error');
+            if (blob.size > PASTE.MAX_IMAGE_SIZE) {
+                const maxMB = PASTE.MAX_IMAGE_SIZE / 1024 / 1024;
+                showToast(`Image too large (max ${maxMB}MB)`, 'error');
                 return;
             }
             processImage(blob);
@@ -89,8 +99,9 @@ window.addEventListener('drop', (e) => {
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
         const file = e.dataTransfer.files[0];
         if (file.type.startsWith('image/')) {
-            if (file.size > MAX_IMAGE_SIZE) {
-                showToast('Image too large (max 10MB)', 'error');
+            if (file.size > PASTE.MAX_IMAGE_SIZE) {
+                const maxMB = PASTE.MAX_IMAGE_SIZE / 1024 / 1024;
+                showToast(`Image too large (max ${maxMB}MB)`, 'error');
                 return;
             }
             processImage(file);
@@ -139,9 +150,15 @@ codeInput.addEventListener('keypress', (e) => {
 });
 
 // Copy Code
-copyCodeBtn.addEventListener('click', () => {
+copyCodeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
     navigator.clipboard.writeText(generatedCodeSpan.textContent);
     showButtonFeedback(copyCodeBtn, true, 'Copied to clipboard!');
+});
+
+// Dismiss big code overlay on click
+codeDisplayArea.addEventListener('click', () => {
+    codeDisplayArea.classList.add('hidden');
 });
 
 
@@ -154,19 +171,12 @@ copyCodeBtn.addEventListener('click', () => {
  * @param {string} toastMessage - Toast message to display if showToastMessage is true
  */
 function showButtonFeedback(button, showToastMessage = false, toastMessage = '') {
-    // Prevent multiple clicks from corrupting the original icon
     if (button.dataset.feedbackActive) return;
 
     const originalIcon = button.innerHTML;
     button.dataset.feedbackActive = 'true';
 
-    // Replace with checkmark icon using Lucide
-    button.innerHTML = '<i data-lucide="check" width="20" height="20"></i>';
-    createIcons({
-        icons: { Check },
-        attrs: { width: '20', height: '20' },
-        nameAttr: 'data-lucide' // Ensure it targets the new element
-    });
+    button.innerHTML = checkIconHTML;
 
     if (showToastMessage && toastMessage) {
         showToast(toastMessage, 'success');
@@ -174,9 +184,8 @@ function showButtonFeedback(button, showToastMessage = false, toastMessage = '')
 
     setTimeout(() => {
         button.innerHTML = originalIcon;
-        // No need to re-create icons as the original HTML is restored
         delete button.dataset.feedbackActive;
-    }, FEEDBACK_DURATION);
+    }, UI.FEEDBACK_DURATION);
 }
 
 function handleInput() {
@@ -185,13 +194,45 @@ function handleInput() {
     // Generate if there is text OR an image
     if (!text && !currentImage) {
         codeDisplayArea.classList.add('hidden');
+        subtleCodeDisplay.classList.add('hidden');
         return;
     }
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
         generateCode();
-    }, DEBOUNCE_DELAY);
+    }, UI.DEBOUNCE_DELAY);
+}
+
+/**
+ * Validate image data URL for security
+ * @param {string} dataUrl - Data URL to validate
+ * @returns {boolean} True if valid and safe
+ */
+function isValidImageDataUrl(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== 'string') return false;
+
+  // Must start with data:image/
+  if (!dataUrl.startsWith('data:image/')) return false;
+
+  // Extract MIME type
+  const mimeMatch = dataUrl.match(/^data:(image\/[^;]+);base64,/);
+  if (!mimeMatch) return false;
+
+  const mimeType = mimeMatch[1];
+
+  // Check if MIME type is allowed (no SVG for XSS prevention)
+  if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) {
+    return false;
+  }
+
+  // Validate base64 encoding
+  const base64Part = dataUrl.split(',')[1];
+  if (!base64Part || !/^[A-Za-z0-9+/=]+$/.test(base64Part)) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -199,20 +240,65 @@ function handleInput() {
  * @param {Blob} blob - Image file blob
  */
 function processImage(blob) {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        currentImage = event.target.result;
-        showImagePreview(currentImage);
-        generateCode();
-    };
-    reader.readAsDataURL(blob);
+  // Validate file type
+  if (!blob.type.startsWith('image/')) {
+    showToast('Please select an image file', 'error');
+    return;
+  }
+
+  // Check if it's SVG (reject for security)
+  if (blob.type === 'image/svg+xml') {
+    showToast('SVG images are not supported for security reasons', 'error');
+    return;
+  }
+
+  // Validate file size
+  if (blob.size > PASTE.MAX_IMAGE_SIZE) {
+    const maxMB = PASTE.MAX_IMAGE_SIZE / 1024 / 1024;
+    showToast(`Image must be smaller than ${maxMB}MB`, 'error');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const dataUrl = event.target.result;
+
+    // Validate the generated data URL
+    if (!isValidImageDataUrl(dataUrl)) {
+      showToast('Invalid or unsupported image format', 'error');
+      return;
+    }
+
+    currentImage = dataUrl;
+    showImagePreview(dataUrl);
+    generateCode();
+  };
+
+  reader.onerror = () => {
+    showToast('Failed to read image file', 'error');
+  };
+
+  reader.readAsDataURL(blob);
 }
 
+/**
+ * Display image preview with security validation
+ * @param {string} base64 - Base64 data URL
+ */
 function showImagePreview(base64) {
-    imagePreview.src = base64;
-    imagePreviewContainer.classList.remove('hidden');
-    // Do NOT clear text or disable textarea
-    mainTextarea.placeholder = 'Add a caption...';
+  // Validate image data URL for XSS prevention
+  if (!isValidImageDataUrl(base64)) {
+    showToast('Invalid or unsafe image data', 'error');
+    clearImage();
+    return;
+  }
+
+  // Sanitize the data URL (additional layer of protection)
+  const sanitized = DOMPurify.sanitize(base64);
+
+  imagePreview.src = sanitized;
+  imagePreviewContainer.classList.remove('hidden');
+  mainTextarea.placeholder = 'Add a caption...';
 }
 
 function clearImage() {
@@ -223,6 +309,7 @@ function clearImage() {
     // If text is empty, hide code
     if (!mainTextarea.value.trim()) {
         codeDisplayArea.classList.add('hidden');
+        subtleCodeDisplay.classList.add('hidden');
     } else {
         // If text remains, regenerate code for text only
         generateCode();
@@ -239,7 +326,9 @@ async function generateCode() {
 
     // Show loading state
     generatedCodeSpan.textContent = '...';
+    subtleCodeSpan.textContent = '...';
     codeDisplayArea.classList.remove('hidden');
+    subtleCodeDisplay.classList.remove('hidden');
 
     const payload = {
         text: text,
@@ -249,20 +338,20 @@ async function generateCode() {
     try {
         const data = await createPaste(payload);
         generatedCodeSpan.textContent = data.code;
+        subtleCodeSpan.textContent = data.code;
+
+        trackInteraction(data.code, data.expiresAt);
+
+        // Auto-dismiss the big overlay after 5 seconds
+        setTimeout(() => {
+            codeDisplayArea.classList.add('hidden');
+        }, 5000);
     } catch (err) {
         console.error('Error generating code:', err);
         if (err.status === 413) {
             showToast('Image is too large to upload.', 'error');
         } else if (err.status === 429) {
-            let msg = 'Rate limited.';
-            if (err.retryAfter) {
-                const resetTime = new Date(Date.now() + err.retryAfter * 1000).toLocaleTimeString();
-                const minutes = Math.floor(err.retryAfter / 60);
-                const seconds = err.retryAfter % 60;
-                const duration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-                msg = `Rate limited. Try again in ${duration} (at ${resetTime}).`;
-            }
-            showToast(msg, 'error');
+            showToast(formatRateLimitMessage(err.retryAfter), 'error');
         } else {
             showToast('Error generating code: ' + (err.message || 'Unknown error'), 'error');
         }
@@ -274,8 +363,8 @@ async function generateCode() {
  */
 async function retrieveContent() {
     const code = codeInput.value.trim();
-    if (code.length !== CODE_LENGTH) {
-        showToast(`Please enter a ${CODE_LENGTH}-digit code`, 'error');
+    if (code.length !== PASTE.CODE_LENGTH) {
+        showToast(`Please enter a ${PASTE.CODE_LENGTH}-digit code`, 'error');
         return;
     }
 
@@ -286,7 +375,8 @@ async function retrieveContent() {
     try {
         const data = await getPaste(code);
 
-        // Handle Image
+        trackInteraction(code, data.expiresAt);
+
         if (data.image) {
             currentImage = data.image;
             showImagePreview(data.image);
@@ -294,7 +384,6 @@ async function retrieveContent() {
             clearImage();
         }
 
-        // Handle Text
         mainTextarea.value = data.text || '';
 
         codeDisplayArea.classList.add('hidden');
@@ -303,15 +392,7 @@ async function retrieveContent() {
     } catch (err) {
         console.error(err);
         if (err.status === 429) {
-            let msg = 'Rate limited.';
-            if (err.retryAfter) {
-                const resetTime = new Date(Date.now() + err.retryAfter * 1000).toLocaleTimeString();
-                const minutes = Math.floor(err.retryAfter / 60);
-                const seconds = err.retryAfter % 60;
-                const duration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-                msg = `Rate limited. Try again in ${duration} (at ${resetTime}).`;
-            }
-            showToast(msg, 'error');
+            showToast(formatRateLimitMessage(err.retryAfter), 'error');
         } else {
             showToast(err.message || 'Failed to connect to server', 'error');
         }

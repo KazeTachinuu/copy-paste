@@ -5,13 +5,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Active Codes - CopyPaste</title>
+
+    <!-- Prevent theme flash -->
+    <style>
+        :root { background: #0f172a; }
+        :root[data-theme="light"] { background: #f8fafc; }
+    </style>
+    <script>
+        const theme = localStorage.getItem('copy-paste-theme') ||
+            (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
 </head>
 
 <body>
-    <a href="/" class="home-btn">← Home</a>
+    <!-- Navigation to home page -->
+    <a href="/" class="home-btn" aria-label="Return to home page">
+      <i data-lucide="home" width="16" height="16"></i>
+      <span>Home</span>
+    </a>
+
+    <!-- Theme Toggle -->
+    <button id="theme-toggle" class="theme-toggle" title="Toggle dark/light mode" aria-label="Toggle theme">
+      <i data-lucide="sun" class="sun-icon" width="20" height="20"></i>
+      <i data-lucide="moon" class="moon-icon" width="20" height="20"></i>
+    </button>
 
     <div class="container">
         <header>
@@ -24,8 +46,8 @@
                 <thead>
                     <tr>
                         <th>Code</th>
-                        <th>Type</th>
                         <th>Expires In</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="table-body">

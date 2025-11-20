@@ -1,10 +1,6 @@
-// In-memory storage
-const store = new Map();
+import { PASTE } from '../config/constants.js';
 
-// Configuration Constants
-const CODE_LENGTH = 4;
-const EXPIRATION_MS = 10 * 60 * 1000; // 10 minutes
-const MAX_SIZE = 500; // Maximum number of active pastes
+const store = new Map();
 
 /**
  * Generate a random numeric code of specified length
@@ -30,9 +26,8 @@ export function createPaste(data) {
   let code;
   let attempts = 0;
 
-  // Ensure uniqueness (simple retry logic)
   do {
-    code = generateCode(CODE_LENGTH);
+    code = generateCode(PASTE.CODE_LENGTH);
     attempts++;
   } while (store.has(code) && attempts < 100);
 
@@ -40,8 +35,7 @@ export function createPaste(data) {
     throw new Error('Failed to generate unique code. Storage full?');
   }
 
-  // Capacity check: Evict oldest if full
-  if (store.size >= MAX_SIZE) {
+  if (store.size >= PASTE.MAX_STORE_SIZE) {
     const oldestKey = store.keys().next().value;
     store.delete(oldestKey);
   }
@@ -50,18 +44,17 @@ export function createPaste(data) {
     text: data.text || '',
     image: data.image || null,
     createdAt: Date.now(),
-    expiresAt: Date.now() + EXPIRATION_MS
+    expiresAt: Date.now() + PASTE.EXPIRATION_MS
   };
 
   store.set(code, paste);
 
-  // Set timeout to auto-delete
   setTimeout(() => {
     const current = store.get(code);
     if (current && current.createdAt === paste.createdAt) {
       store.delete(code);
     }
-  }, EXPIRATION_MS);
+  }, PASTE.EXPIRATION_MS);
 
   return { code, expiresAt: paste.expiresAt };
 }
@@ -85,31 +78,3 @@ export function getPaste(code) {
 
   return paste;
 }
-
-/**
- * List all active paste codes with metadata
- * @returns {Array} Array of paste metadata objects
- */
-export function listPastes() {
-  const now = Date.now();
-  const activePastes = [];
-
-  for (const [code, paste] of store.entries()) {
-    // Skip expired pastes
-    if (now > paste.expiresAt) {
-      continue;
-    }
-
-    activePastes.push({
-      code,
-      hasText: !!paste.text,
-      hasImage: !!paste.image,
-      expiresAt: paste.expiresAt,
-      expiresIn: Math.max(0, Math.floor((paste.expiresAt - now) / 1000)) // seconds remaining
-    });
-  }
-
-  return activePastes;
-}
-
-

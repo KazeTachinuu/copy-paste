@@ -1,50 +1,54 @@
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const RATE_LIMIT_MAX_REQUESTS = 300 // Max requests per IP per window (allows ~3 devices polling every 10s)
-const RATE_LIMIT_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
+import { RATE_LIMIT } from '../../config/constants.js';
 
 const requestCounts = new Map();
 
 // Periodic cleanup of rate limiting map
 setInterval(() => {
-    const now = Date.now();
-    for (const [ip, timestamps] of requestCounts.entries()) {
-        const validTimestamps = timestamps.filter(time => now - time < RATE_LIMIT_WINDOW_MS);
-        if (validTimestamps.length === 0) {
-            requestCounts.delete(ip);
-        } else {
-            requestCounts.set(ip, validTimestamps);
-        }
+  const now = Date.now();
+  for (const [ip, timestamps] of requestCounts.entries()) {
+    const validTimestamps = timestamps.filter(time => now - time < RATE_LIMIT.WINDOW_MS);
+    if (validTimestamps.length === 0) {
+      requestCounts.delete(ip);
+    } else {
+      requestCounts.set(ip, validTimestamps);
     }
-}, RATE_LIMIT_CLEANUP_INTERVAL);
+  }
+}, RATE_LIMIT.CLEANUP_INTERVAL);
 
 export const rateLimiter = (req, res, next) => {
-    // Skip rate limiting for health check only
-    if (req.path === '/health') {
-        return next();
-    }
+  // Skip rate limiting for health check only
+  if (req.path === '/health') {
+    return next();
+  }
 
-    const ip = req.ip;
-    const now = Date.now();
+  const ip = req.ip || req.socket.remoteAddress;
 
-    if (!requestCounts.has(ip)) {
-        requestCounts.set(ip, []);
-    }
+  if (!ip) {
+    console.error('Rate limiter: No IP address');
+    return res.status(403).json({ error: 'Unable to process request' });
+  }
 
-    const requests = requestCounts.get(ip);
-    const recentRequests = requests.filter(time => now - time < RATE_LIMIT_WINDOW_MS);
+  const now = Date.now();
 
-    if (recentRequests.length >= RATE_LIMIT_MAX_REQUESTS) {
-        const oldestRequest = recentRequests[0];
-        const timeUntilExpiry = RATE_LIMIT_WINDOW_MS - (now - oldestRequest);
-        const secondsUntilExpiry = Math.ceil(timeUntilExpiry / 1000);
+  if (!requestCounts.has(ip)) {
+    requestCounts.set(ip, []);
+  }
 
-        res.setHeader('Retry-After', secondsUntilExpiry);
-        return res.status(429).json({
-            error: `Too many requests. Please try again in ${secondsUntilExpiry} seconds.`
-        });
-    }
+  const requests = requestCounts.get(ip);
+  const recentRequests = requests.filter(time => now - time < RATE_LIMIT.WINDOW_MS);
 
-    recentRequests.push(now);
-    requestCounts.set(ip, recentRequests);
-    next();
+  if (recentRequests.length >= RATE_LIMIT.MAX_REQUESTS) {
+    const oldestRequest = recentRequests[0];
+    const timeUntilExpiry = RATE_LIMIT.WINDOW_MS - (now - oldestRequest);
+    const secondsUntilExpiry = Math.ceil(timeUntilExpiry / 1000);
+
+    res.setHeader('Retry-After', secondsUntilExpiry);
+    return res.status(429).json({
+      error: `Too many requests. Please try again in ${secondsUntilExpiry} seconds.`
+    });
+  }
+
+  recentRequests.push(now);
+  requestCounts.set(ip, recentRequests);
+  next();
 };

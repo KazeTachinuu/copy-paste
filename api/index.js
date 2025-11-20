@@ -3,12 +3,11 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import Joi from 'joi';
-import { createPaste, getPaste } from './store.js';
-import { rateLimiter } from './middleware/rateLimiter.js';
+import { createPaste, getPaste } from '../server/store.js';
+import { rateLimiter } from '../server/middleware/rateLimiter.js';
 import { PASTE, ALLOWED_IMAGE_TYPES, IMAGE_DATA_URL_REGEX } from '../config/constants.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
 const IS_DEVELOPMENT = process.env.NODE_ENV !== 'production';
 
@@ -119,6 +118,4 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+export default app;
