@@ -1,12 +1,6 @@
 {
   "buildCommand": "bun run build",
   "outputDirectory": "dist",
-  "functions": {
-    "api/**/*.js": {
-      "memory": 1024,
-      "maxDuration": 10
-    }
-  },
   "headers": [
     {
       "source": "/(.*)",
@@ -27,14 +21,6 @@
     }
   ],
   "rewrites": [
-    {
-      "source": "/api/paste/:code",
-      "destination": "/api/paste?code=:code"
-    },
-    {
-      "source": "/api/paste",
-      "destination": "/api/paste"
-    },
     {
       "source": "/list",
       "destination": "/list.html"

@@ -1,7 +1,7 @@
 import './shared.css';
 import './style.css';
 import { createIcons, Copy, ArrowRight, Sun, Moon, List } from 'lucide';
-import { createPaste, getPaste } from './api.js';
+import { createPaste, getPaste, subscribeToPaste } from './api.js';
 import { showToast, formatRateLimitMessage } from './ui.js';
 import { PASTE, UI } from '../config/constants.js';
 import { initThemeToggle } from './theme.js';
@@ -26,7 +26,7 @@ const syncStatusSpan = document.getElementById('sync-status');
 let debounceTimer;
 let currentMode = 'quick';
 let currentSessionCode = null;
-let pollInterval = null;
+let unsubscribeFromPaste = null;
 let lastSyncedText = '';
 let isSyncing = false;
 
@@ -81,8 +81,8 @@ function generateSessionCode() {
     return code;
 }
 
-function startPolling() {
-    if (pollInterval) return; // Already polling
+function startRealtimeSync() {
+    if (unsubscribeFromPaste) return; // Already subscribed
 
     // Show sync indicator
     if (syncStatusSpan) {
@@ -90,43 +90,43 @@ function startPolling() {
         syncStatusSpan.classList.remove('hidden');
     }
 
-    pollInterval = setInterval(async () => {
-        if (currentMode !== 'session' || !currentSessionCode || isSyncing) return;
-
-        try {
-            const data = await getPaste(currentSessionCode);
-
-            // Only update if text is different and we're not currently typing
-            if (data.text !== mainTextarea.value && data.text !== lastSyncedText) {
-                const cursorPosition = mainTextarea.selectionStart;
-                const isAtEnd = cursorPosition === mainTextarea.value.length;
-
-                mainTextarea.value = data.text;
-                lastSyncedText = data.text;
-
-                // Restore cursor position (if at end, keep at end)
-                if (isAtEnd) {
-                    mainTextarea.selectionStart = mainTextarea.selectionEnd = mainTextarea.value.length;
-                } else {
-                    mainTextarea.selectionStart = mainTextarea.selectionEnd = Math.min(cursorPosition, mainTextarea.value.length);
-                }
-            }
-
-            updateExpireTime(data.expiresAt);
-        } catch (err) {
-            // Session might have expired or been deleted
-            if (err.status === 404) {
-                stopPolling();
+    // Subscribe to real-time updates
+    unsubscribeFromPaste = subscribeToPaste(currentSessionCode, (data, error) => {
+        if (error) {
+            // Handle subscription errors
+            if (error.message && error.message.includes('not found')) {
+                stopRealtimeSync();
                 showToast('Session expired', 'error');
             }
+            return;
         }
-    }, 2000); // Poll every 2 seconds
+
+        if (!data || currentMode !== 'session' || !currentSessionCode || isSyncing) return;
+
+        // Only update if text is different and we're not currently typing
+        if (data.text !== mainTextarea.value && data.text !== lastSyncedText) {
+            const cursorPosition = mainTextarea.selectionStart;
+            const isAtEnd = cursorPosition === mainTextarea.value.length;
+
+            mainTextarea.value = data.text;
+            lastSyncedText = data.text;
+
+            // Restore cursor position (if at end, keep at end)
+            if (isAtEnd) {
+                mainTextarea.selectionStart = mainTextarea.selectionEnd = mainTextarea.value.length;
+            } else {
+                mainTextarea.selectionStart = mainTextarea.selectionEnd = Math.min(cursorPosition, mainTextarea.value.length);
+            }
+        }
+
+        updateExpireTime(data.expiresAt);
+    });
 }
 
-function stopPolling() {
-    if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
+function stopRealtimeSync() {
+    if (unsubscribeFromPaste) {
+        unsubscribeFromPaste();
+        unsubscribeFromPaste = null;
     }
 
     // Hide sync indicator
@@ -140,9 +140,9 @@ function switchMode(mode, sessionCode = null) {
     modeButtons.forEach(b => b.classList.remove('active'));
     document.querySelector(`[data-mode="${mode}"]`).classList.add('active');
 
-    // Stop polling when leaving session mode
+    // Stop real-time sync when leaving session mode
     if (mode !== 'session') {
-        stopPolling();
+        stopRealtimeSync();
     }
 
     if (mode === 'session') {
@@ -158,7 +158,7 @@ function switchMode(mode, sessionCode = null) {
             codeInput.value = sessionCode;
             subtleCodeSpan.textContent = sessionCode;
             subtleCodeDisplay.classList.remove('hidden');
-            startPolling();
+            startRealtimeSync();
         } else {
             codeInput.value = '';
             subtleCodeDisplay.classList.add('hidden');
@@ -226,7 +226,7 @@ getTextBtn.addEventListener('click', async () => {
             subtleCodeDisplay.classList.remove('hidden');
             updateExpireTime(data.expiresAt);
             trackInteraction(code, data.expiresAt);
-            startPolling();
+            startRealtimeSync();
             showToast('Joined session!', 'success');
             codeInput.value = '';
         } catch (err) {
@@ -291,7 +291,7 @@ function handleInput() {
         subtleCodeSpan.textContent = currentSessionCode;
         subtleCodeDisplay.classList.remove('hidden');
         showToast(`Session created: ${currentSessionCode}`, 'success');
-        startPolling();
+        startRealtimeSync();
     }
 
     clearTimeout(debounceTimer);
