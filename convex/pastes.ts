@@ -19,14 +19,14 @@ const PER_CLIENT_RATE_LIMIT = {
   capacity: 15,
 };
 
-// Global rate limit: 500 pastes/min sustained, can burst up to 750
+// Global rate limit: 300 pastes/min sustained, can burst up to 500
 // This is very generous for normal usage - hitting this limit indicates a DDoS attack
 // NOTE: Monitor the rateLimits table for "createPaste:global" - set up alerts if sustained >100/min
 const GLOBAL_RATE_LIMIT = {
   kind: "token bucket" as const,
-  rate: 500,
+  rate: 300,
   period: MINUTE,
-  capacity: 750,
+  capacity: 500,
 };
 
 function generateCode(length: number): string {
@@ -61,8 +61,6 @@ export const createPaste = mutation({
       throw new Error(`Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
     }
 
-    console.log("createPaste called with clientId:", clientId);
-
     // Apply global rate limit first (protects against distributed attacks)
     await rateLimit(ctx, {
       name: "createPaste:global",
@@ -72,15 +70,12 @@ export const createPaste = mutation({
 
     // Apply per-client rate limit (if clientId provided)
     if (clientId) {
-      console.log("Applying per-client rate limit for:", clientId);
       await rateLimit(ctx, {
         name: "createPaste:client",
         key: clientId,
         throws: true,
         config: PER_CLIENT_RATE_LIMIT,
       });
-    } else {
-      console.warn("No clientId provided - skipping per-client rate limit");
     }
 
     const now = Date.now();
