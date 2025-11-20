@@ -164,7 +164,6 @@ function switchMode(mode, sessionCode = null) {
             subtleCodeDisplay.classList.remove('hidden');
             startRealtimeSync();
         } else {
-            codeInput.value = '';
             subtleCodeDisplay.classList.add('hidden');
             currentSessionCode = null;
         }
@@ -174,7 +173,6 @@ function switchMode(mode, sessionCode = null) {
         codeInput.maxLength = 4;
         getTextBtn.title = 'Get Text';
         mainTextarea.placeholder = 'Paste text here...';
-        codeInput.value = '';
         codeDisplayArea.classList.add('hidden');
         subtleCodeDisplay.classList.add('hidden');
         currentSessionCode = null;
@@ -258,6 +256,18 @@ copyCodeBtn.addEventListener('click', (e) => {
 
 codeDisplayArea.addEventListener('click', () => {
     codeDisplayArea.classList.add('hidden');
+});
+
+subtleCodeDisplay.addEventListener('click', () => {
+    const code = subtleCodeSpan.textContent;
+    if (code && code !== '----') {
+        navigator.clipboard.writeText(code).then(() => {
+            showToast('Copied to clipboard!', 'success');
+        }).catch(err => {
+            console.error('Failed to copy code: ', err);
+            showToast('Failed to copy code', 'error');
+        });
+    }
 });
 
 
@@ -391,11 +401,13 @@ async function retrieveContent() {
         codeDisplayArea.classList.add('hidden');
         showToast('Content retrieved!', 'success');
     } catch (err) {
-        console.error(err);
         if (err.status === 429) {
             showToast(formatRateLimitMessage(err.retryAfter), 'error');
+        } else if (err.message && (err.message.includes('not found') || err.message.includes('expired'))) {
+            showToast('Code not found or expired', 'error');
         } else {
-            showToast(err.message || 'Failed to connect to server', 'error');
+            console.error('Error retrieving paste:', err);
+            showToast('Failed to retrieve content', 'error');
         }
     } finally {
         getTextBtn.innerHTML = originalBtnContent;

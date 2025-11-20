@@ -19,12 +19,4 @@ if (!/^https:\/\/.+\.convex\.(cloud|site)$/.test(convexUrl)) {
   );
 }
 
-// Warn if using production URL in development
-if (import.meta.env.DEV && convexUrl.includes('.convex.cloud')) {
-  console.warn(
-    '⚠️  Using production Convex URL in development mode!\n' +
-    'Consider using a separate development deployment.'
-  );
-}
-
 export const convex = new ConvexClient(convexUrl);
