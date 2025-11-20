@@ -63,7 +63,7 @@ export default async function handler(req, res) {
         });
       }
 
-      const result = createPaste({ text, image });
+      const result = await createPaste({ text, image });
       return res.status(200).json(result);
     } catch (error) {
       console.error('Error creating paste:', error);
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Code is required' });
       }
 
-      const paste = getPaste(code);
+      const paste = await getPaste(code);
 
       if (!paste) {
         return res.status(404).json({ error: 'Paste not found or expired' });
