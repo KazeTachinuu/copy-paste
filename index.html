@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CopyPaste - Simple Cross-Device Copying</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <div id="app">
+    <!-- Subtle link to list page -->
+    <a href="/list" class="list-link">Codes</a>
+
+    <!-- Code Display (Top Right) -->
+    <div id="code-display-area" class="code-overlay hidden">
+      <span class="label">YOUR CODE</span>
+      <div class="code-content">
+        <span id="generated-code">----</span>
+        <button id="copy-code-btn" class="icon-btn" title="Copy Code">
+          <i data-lucide="copy" width="20" height="20"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Text Area -->
+    <div class="main-container">
+      <div class="input-wrapper">
+        <div id="content-stack">
+          <div id="image-preview-container" class="hidden">
+            <img id="image-preview" src="" alt="Pasted Image" />
+            <div class="image-controls">
+              <button id="download-image-btn" class="icon-btn" title="Download Image">
+                <i data-lucide="download" width="20" height="20"></i>
+              </button>
+              <button id="clear-image-btn" class="icon-btn" title="Clear Image">
+                <i data-lucide="x" width="20" height="20"></i>
+              </button>
+            </div>
+          </div>
+          <div class="textarea-container">
+            <textarea id="main-textarea" placeholder="Paste text or image here..."></textarea>
+            <button id="copy-text-btn" class="icon-btn" title="Copy Text">
+              <i data-lucide="copy" width="20" height="20"></i>
+            </button>
+          </div>
+        </div>
+        <div id="drop-overlay" class="hidden">
+          <span>Drop Image Here</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Retrieval Widget (Bottom Right) -->
+    <div class="floating-widget">
+      <div class="widget-content">
+        <input type="text" id="code-input" placeholder="Enter Code" maxlength="4" pattern="\d*">
+        <button id="get-text-btn" class="icon-btn primary" title="Get Text">
+          <i data-lucide="arrow-right" width="24" height="24"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>
