@@ -7,8 +7,10 @@ node_modules
 .env*.local
 
 # Development files
-server/
+server/           # Local dev server only, not needed in production
 vite.config.js
+
+# Note: lib/ is NOT excluded - it contains shared code used by serverless functions
 
 # Editor files
 .vscode

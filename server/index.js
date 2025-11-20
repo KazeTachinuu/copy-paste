@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import Joi from 'joi';
-import { createPaste, getPaste } from './store.js';
+import { createPaste, getPaste } from '../lib/store.js';
 import { PASTE, ALLOWED_IMAGE_TYPES, IMAGE_DATA_URL_REGEX } from '../config/constants.js';
 
 const app = express();
@@ -45,7 +45,6 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '10mb' }));
-// Note: Rate limiting disabled for local dev. Use Vercel's built-in rate limiting in production.
 
 const pasteSchema = Joi.object({
   text: Joi.string().max(100000).allow(null),
@@ -63,13 +62,8 @@ function validateImageSize(base64String) {
   return sizeInBytes <= PASTE.MAX_IMAGE_SIZE;
 }
 
-/**
- * POST /api/paste
- * Create a new paste with text and/or image
- */
 app.post('/api/paste', async (req, res) => {
   try {
-    // Validate request body
     const { error, value } = pasteSchema.validate(req.body);
 
     if (error) {
@@ -81,7 +75,6 @@ app.post('/api/paste', async (req, res) => {
 
     const { text, image } = value;
 
-    // Validate image size
     if (image && !validateImageSize(image)) {
       return res.status(413).json({
         error: `Image too large. Maximum size is ${PASTE.MAX_IMAGE_SIZE / 1024 / 1024}MB`
@@ -96,10 +89,6 @@ app.post('/api/paste', async (req, res) => {
   }
 });
 
-/**
- * GET /api/paste/:code
- * Retrieve a paste by its code
- */
 app.get('/api/paste/:code', async (req, res) => {
   try {
     const { code } = req.params;
@@ -120,10 +109,6 @@ app.get('/api/paste/:code', async (req, res) => {
   }
 });
 
-/**
- * GET /health
- * Health check endpoint
- */
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });

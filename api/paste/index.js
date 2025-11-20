@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import Joi from 'joi';
-import { createPaste, getPaste } from '../../server/store.js';
+import { createPaste, getPaste } from '../../lib/store.js';
 import { PASTE, IMAGE_DATA_URL_REGEX } from '../../config/constants.js';
 
 const pasteSchema = Joi.object({
@@ -19,7 +19,6 @@ function validateImageSize(base64String) {
   return sizeInBytes <= PASTE.MAX_IMAGE_SIZE;
 }
 
-// CORS helper
 function setCorsHeaders(res, origin) {
   const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
   const IS_DEVELOPMENT = process.env.NODE_ENV !== 'production';
@@ -38,12 +37,10 @@ export default async function handler(req, res) {
   const origin = req.headers.origin || req.headers.referer;
   setCorsHeaders(res, origin);
 
-  // Handle preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // POST /api/paste - Create paste
   if (req.method === 'POST') {
     try {
       const { error, value } = pasteSchema.validate(req.body);
@@ -67,14 +64,23 @@ export default async function handler(req, res) {
       return res.status(200).json(result);
     } catch (error) {
       console.error('Error creating paste:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+
+      if (error.message?.includes('KV not configured')) {
+        return res.status(503).json({
+          error: 'Service temporarily unavailable',
+          details: 'Database connection not configured. Please contact support.'
+        });
+      }
+
+      return res.status(500).json({
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   }
 
-  // GET /api/paste?code=XXXX or /api/paste/XXXX - Get paste
   if (req.method === 'GET') {
     try {
-      // Support both query param and path param
       const code = req.query.code || req.url.split('/').pop();
 
       if (!code || code === 'paste') {
@@ -94,7 +100,18 @@ export default async function handler(req, res) {
       });
     } catch (error) {
       console.error('Error retrieving paste:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+
+      if (error.message?.includes('KV not configured')) {
+        return res.status(503).json({
+          error: 'Service temporarily unavailable',
+          details: 'Database connection not configured. Please contact support.'
+        });
+      }
+
+      return res.status(500).json({
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   }
 
