@@ -13,11 +13,11 @@
         :root { background: #0f172a; }
         :root[data-theme="light"] { background: #f8fafc; }
     </style>
-    <script>
-        const theme = localStorage.getItem('copy-paste-theme') ||
-            (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', theme);
-    </script>
+  <script>
+    const theme = localStorage.getItem('copy-paste-theme') ||
+      (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
