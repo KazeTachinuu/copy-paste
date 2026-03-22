@@ -29,31 +29,52 @@ let currentSessionCode = null;
 let unsubscribeFromPaste = null;
 let lastSyncedText = '';
 let isSyncing = false;
+let currentExpiresAt = null;
+let expireTickInterval = null;
 
-function updateExpireTime(expiresAt) {
-    if (!expiresAt) {
+function renderExpireTime() {
+    if (!currentExpiresAt) {
         expireTimeSpan.classList.add('hidden');
         return;
     }
 
-    const now = Date.now();
-    const timeLeft = expiresAt - now;
+    const timeLeft = currentExpiresAt - Date.now();
 
     if (timeLeft <= 0) {
         expireTimeSpan.textContent = 'Expired';
         expireTimeSpan.classList.remove('hidden');
+        clearInterval(expireTickInterval);
+        expireTickInterval = null;
         return;
     }
 
-    const minutes = Math.floor(timeLeft / 60000);
-    const hours = Math.floor(minutes / 60);
+    const totalSeconds = Math.ceil(timeLeft / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
 
     if (hours > 0) {
-        expireTimeSpan.textContent = `Expires in ${hours}h ${minutes % 60}m`;
+        expireTimeSpan.textContent = `Expires in ${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+        expireTimeSpan.textContent = `Expires in ${minutes}m ${seconds}s`;
     } else {
-        expireTimeSpan.textContent = `Expires in ${minutes}m`;
+        expireTimeSpan.textContent = `Expires in ${seconds}s`;
     }
     expireTimeSpan.classList.remove('hidden');
+}
+
+function updateExpireTime(expiresAt) {
+    currentExpiresAt = expiresAt || null;
+    renderExpireTime();
+
+    if (expireTickInterval) {
+        clearInterval(expireTickInterval);
+        expireTickInterval = null;
+    }
+
+    if (currentExpiresAt && currentExpiresAt > Date.now()) {
+        expireTickInterval = setInterval(renderExpireTime, 1000);
+    }
 }
 
 initThemeToggle();
@@ -250,8 +271,11 @@ codeInput.addEventListener('keypress', (e) => {
 
 copyCodeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(generatedCodeSpan.textContent);
-    showButtonFeedback(copyCodeBtn, true, 'Copied to clipboard!');
+    navigator.clipboard.writeText(generatedCodeSpan.textContent).then(() => {
+        showButtonFeedback(copyCodeBtn, true, 'Copied to clipboard!');
+    }).catch(() => {
+        showToast('Failed to copy', 'error');
+    });
 });
 
 codeDisplayArea.addEventListener('click', () => {
@@ -407,6 +431,7 @@ async function retrieveContent() {
         }
 
         mainTextarea.value = data.text || '';
+        lastSyncedText = data.text || '';
         codeDisplayArea.classList.add('hidden');
         showToast('Content retrieved!', 'success');
     } catch (err) {

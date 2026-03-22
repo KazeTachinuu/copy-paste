@@ -1,6 +1,7 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, MutationCtx, QueryCtx } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
 import { Doc } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { rateLimit } from "convex-helpers/server/rateLimit";
 
 const QUICK_PASTE_EXPIRY = 15 * 60 * 1000; // 15 minutes
@@ -69,6 +70,9 @@ export const createPaste = mutation({
     });
 
     // Apply per-client rate limit (if clientId provided)
+    if (clientId && clientId.length > 128) {
+      throw new Error("Invalid clientId");
+    }
     if (clientId) {
       await rateLimit(ctx, {
         name: "createPaste:client",
@@ -84,10 +88,10 @@ export const createPaste = mutation({
     let type: "quick" | "session";
 
     if (customCode !== undefined) {
-      if (!/^[23456789ACDEFGHJKLMNPQRSTUVWXYZ]{5}$/i.test(customCode)) {
-        throw new Error("Custom code must be 5 alphanumeric characters");
-      }
       code = customCode.toUpperCase();
+      if (!/^[23456789ACDEFGHJKLMNPQRSTUVWXYZ]{5}$/.test(code)) {
+        throw new Error("Custom code must be 5 characters from the allowed set");
+      }
       type = "session";
       expiresAt = now + SESSION_PASTE_EXPIRY;
 
@@ -148,7 +152,14 @@ export const getPaste = query({
 export const watchPaste = query({
   args: { code: v.string() },
   handler: async (ctx, { code }) => {
-    const paste = await findPasteByCode(ctx, code.toUpperCase());
+    code = code.toUpperCase();
+    if (code.length !== CODE_LENGTH && code.length !== SESSION_CODE_LENGTH) {
+      return null;
+    }
+    if (!/^[23456789ACDEFGHJKLMNPQRSTUVWXYZ]+$/.test(code)) {
+      return null;
+    }
+    const paste = await findPasteByCode(ctx, code);
 
     if (!paste || paste.expiresAt < Date.now()) {
       return null;
@@ -163,24 +174,30 @@ export const watchPaste = query({
 });
 
 export const cleanupExpired = internalMutation({
+  args: {},
   handler: async (ctx) => {
     const now = Date.now();
     const expired = await ctx.db
       .query("pastes")
       .withIndex("by_expiration", (q) => q.lt("expiresAt", now))
-      .take(1000);
+      .take(500);
 
     for (const paste of expired) {
       await ctx.db.delete(paste._id);
     }
 
-    return { deleted: expired.length, hasMore: expired.length === 1000 };
+    if (expired.length === 500) {
+      await ctx.scheduler.runAfter(0, internal.pastes.cleanupExpired, {});
+    }
+
+    return { deleted: expired.length };
   },
 });
 
 // Monitoring query: Check current global rate limit status
 // Use this to set up alerts if tokens drop below a threshold
-export const getRateLimitStatus = query({
+export const getRateLimitStatus = internalQuery({
+  args: {},
   handler: async (ctx) => {
     const globalLimit = await ctx.db
       .query("rateLimits")
@@ -209,8 +226,33 @@ export const getRateLimitStatus = query({
   },
 });
 
+// Cron job: Clean up stale per-client rate limit rows
+const RATE_LIMIT_STALE_THRESHOLD = 60 * MINUTE; // 1 hour
+export const cleanupStaleRateLimits = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - RATE_LIMIT_STALE_THRESHOLD;
+    const staleRows = await ctx.db
+      .query("rateLimits")
+      .withIndex("name", (q) => q.eq("name", "createPaste:client"))
+      .filter((q) => q.lt(q.field("ts"), cutoff))
+      .take(500);
+
+    for (const row of staleRows) {
+      await ctx.db.delete(row._id);
+    }
+
+    if (staleRows.length === 500) {
+      await ctx.scheduler.runAfter(0, internal.pastes.cleanupStaleRateLimits, {});
+    }
+
+    return { deleted: staleRows.length };
+  },
+});
+
 // Cron job: Monitor rate limit and log warnings
 export const monitorRateLimit = internalMutation({
+  args: {},
   handler: async (ctx) => {
     const globalLimit = await ctx.db
       .query("rateLimits")

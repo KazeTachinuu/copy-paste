@@ -10,6 +10,12 @@ crons.interval(
 );
 
 crons.interval(
+  "cleanup stale rate limits",
+  { hours: 1 },
+  internal.pastes.cleanupStaleRateLimits
+);
+
+crons.interval(
   "monitor rate limit",
   { minutes: 5 },
   internal.pastes.monitorRateLimit

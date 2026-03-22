@@ -21,6 +21,7 @@
   --card-border: rgba(255, 255, 255, 0.08);
   --text-main: #f1f5f9;
   --text-muted: #94a3b8;
+  --text-secondary: #cbd5e1;
   --input-bg: rgba(0, 0, 0, 0.2);
   --hover-bg: rgba(255, 255, 255, 0.08);
   --shadow-color: rgba(0, 0, 0, 0.3);
@@ -34,6 +35,7 @@
   --card-border: rgba(0, 0, 0, 0.08);
   --text-main: #0f172a;
   --text-muted: #64748b;
+  --text-secondary: #475569;
   --input-bg: rgba(255, 255, 255, 0.9);
   --hover-bg: rgba(0, 0, 0, 0.05);
   --shadow-color: rgba(0, 0, 0, 0.1);
