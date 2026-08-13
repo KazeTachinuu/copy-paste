@@ -13,7 +13,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Initialize theme
 initThemeToggle();
 
 // Initialize Lucide icons
@@ -27,7 +26,6 @@ let refreshInterval;
 let countdownInterval;
 let deleteConfirmTimeout;
 
-// DOM Elements
 const subtitle = document.getElementById('subtitle');
 const tableBody = document.getElementById('table-body');
 const pagination = document.getElementById('pagination');
@@ -113,7 +111,6 @@ function renderTable() {
         </tr>
     `).join('');
 
-    // Row checkboxes
     document.querySelectorAll('.row-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             const code = e.target.dataset.code;

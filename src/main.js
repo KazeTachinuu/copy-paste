@@ -7,7 +7,6 @@ import { PASTE, UI } from '../config/constants.js';
 import { initThemeToggle } from './theme.js';
 import { trackInteraction, cleanupExpiredPastes } from './storage.js';
 
-// DOM Elements
 const mainTextarea = document.getElementById('main-textarea');
 const codeDisplayArea = document.getElementById('code-display-area');
 const generatedCodeSpan = document.getElementById('generated-code');

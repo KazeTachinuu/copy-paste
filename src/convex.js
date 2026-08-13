@@ -1,6 +1,5 @@
 import { ConvexClient } from "convex/browser";
 
-// Initialize Convex client with deployment URL from environment
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
 
 // Validate environment variable is set
