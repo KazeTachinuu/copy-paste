@@ -1,7 +1,6 @@
 export const PASTE = {
   CODE_LENGTH: 4,
   SESSION_CODE_LENGTH: 5,
-  MAX_STORE_SIZE: 500,
 };
 
 export const UI = {

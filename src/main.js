@@ -1,11 +1,13 @@
 import './shared.css';
 import './style.css';
-import { createIcons, Copy, ArrowRight, Sun, Moon, List } from 'lucide';
+import { createIcons, Copy, ArrowRight, Sun, Moon, List, QrCode } from 'lucide';
 import { createPaste, getPaste, subscribeToPaste } from './api.js';
 import { showToast, formatRateLimitMessage } from './ui.js';
 import { PASTE, UI } from '../config/constants.js';
 import { initThemeToggle } from './theme.js';
 import { trackInteraction, cleanupExpiredPastes } from './storage.js';
+import { qrSvg } from './qr.js';
+import { generateCode } from './code.js';
 
 const mainTextarea = document.getElementById('main-textarea');
 const codeDisplayArea = document.getElementById('code-display-area');
@@ -20,6 +22,12 @@ const modeButtons = document.querySelectorAll('.mode-btn');
 const widgetLabel = document.getElementById('widget-label');
 const expireTimeSpan = document.getElementById('expire-time');
 const syncStatusSpan = document.getElementById('sync-status');
+const qrCodeBtn = document.getElementById('qr-code-btn');
+const subtleQrBtn = document.getElementById('subtle-qr-btn');
+const qrModal = document.getElementById('qr-modal');
+const qrModalSvg = document.getElementById('qr-modal-svg');
+const qrModalCode = document.getElementById('qr-modal-code');
+const qrModalClose = document.getElementById('qr-modal-close');
 
 // State
 let debounceTimer;
@@ -27,7 +35,7 @@ let currentMode = 'quick';
 let currentSessionCode = null;
 let unsubscribeFromPaste = null;
 let lastSyncedText = '';
-let isSyncing = false;
+let localDirty = false;
 let currentExpiresAt = null;
 let expireTickInterval = null;
 
@@ -79,7 +87,7 @@ function updateExpireTime(expiresAt) {
 initThemeToggle();
 cleanupExpiredPastes();
 createIcons({
-    icons: { Copy, ArrowRight, Sun, Moon, List }
+    icons: { Copy, ArrowRight, Sun, Moon, List, QrCode }
 });
 
 // Check icon SVG for button feedback
@@ -91,23 +99,6 @@ const codeFromUrl = urlParams.get('code');
 if (codeFromUrl && (codeFromUrl.length === PASTE.CODE_LENGTH || codeFromUrl.length === PASTE.SESSION_CODE_LENGTH)) {
     codeInput.value = codeFromUrl;
     setTimeout(() => retrieveContent(), 100);
-}
-
-// Generate session code with cryptographically secure random
-// Using safe character set (no confusing 0/O, 1/I/L, B/8)
-function generateSessionCode() {
-    const chars = '23456789ACDEFGHJKLMNPQRSTUVWXYZ';
-    let code = '';
-
-    // Use crypto.getRandomValues for cryptographically secure random
-    const randomValues = new Uint32Array(PASTE.SESSION_CODE_LENGTH);
-    crypto.getRandomValues(randomValues);
-
-    for (let i = 0; i < PASTE.SESSION_CODE_LENGTH; i++) {
-        // Use modulo to map random value to character index
-        code += chars[randomValues[i] % chars.length];
-    }
-    return code;
 }
 
 function startRealtimeSync() {
@@ -124,23 +115,21 @@ function startRealtimeSync() {
         // Ignore if we're not in the right mode or if data is null (paste doesn't exist yet)
         if (!data || currentMode !== 'session' || !currentSessionCode) return;
 
-        // Update UI if text changed
         if (data.text !== lastSyncedText) {
-            lastSyncedText = data.text;
-
-            if (data.text !== mainTextarea.value) {
+            if (data.text === mainTextarea.value) {
+                // Server echoed a value we already hold locally.
+                lastSyncedText = data.text;
+            } else if (!localDirty) {
+                // Genuine remote edit and we're not mid-edit: apply it, preserving the cursor.
                 const cursorPosition = mainTextarea.selectionStart;
                 const isAtEnd = cursorPosition === mainTextarea.value.length;
-
                 mainTextarea.value = data.text;
-
-                // Restore cursor position
-                if (isAtEnd) {
-                    mainTextarea.selectionStart = mainTextarea.selectionEnd = mainTextarea.value.length;
-                } else {
-                    mainTextarea.selectionStart = mainTextarea.selectionEnd = Math.min(cursorPosition, mainTextarea.value.length);
-                }
+                mainTextarea.selectionStart = mainTextarea.selectionEnd = isAtEnd
+                    ? mainTextarea.value.length
+                    : Math.min(cursorPosition, mainTextarea.value.length);
+                lastSyncedText = data.text;
             }
+            // else: local edit in flight; our pending save reconciles it, so don't clobber.
         }
 
         updateExpireTime(data.expiresAt);
@@ -170,11 +159,11 @@ function switchMode(mode, sessionCode = null) {
     }
 
     if (mode === 'session') {
-        widgetLabel.textContent = 'Session Code';
-        codeInput.placeholder = 'Optional';
+        widgetLabel.textContent = 'Join Session';
+        codeInput.placeholder = 'Enter code';
         codeInput.maxLength = 5;
         getTextBtn.title = 'Join Session';
-        mainTextarea.placeholder = 'Start typing to create a session...';
+        mainTextarea.placeholder = 'Start typing to create a live session...';
         codeDisplayArea.classList.add('hidden');
 
         if (sessionCode) {
@@ -182,10 +171,12 @@ function switchMode(mode, sessionCode = null) {
             codeInput.value = sessionCode;
             subtleCodeSpan.textContent = sessionCode;
             subtleCodeDisplay.classList.remove('hidden');
+            localDirty = false;
             startRealtimeSync();
         } else {
             subtleCodeDisplay.classList.add('hidden');
             currentSessionCode = null;
+            localDirty = false;
         }
     } else {
         widgetLabel.textContent = 'Retrieve Code';
@@ -238,7 +229,7 @@ getTextBtn.addEventListener('click', async () => {
         // Join a session by code
         const code = codeInput.value.trim();
         if (code.length !== PASTE.SESSION_CODE_LENGTH) {
-            showToast('Enter a 5-digit session code', 'error');
+            showToast('Enter a 5-character session code', 'error');
             return;
         }
 
@@ -247,6 +238,7 @@ getTextBtn.addEventListener('click', async () => {
             currentSessionCode = code;
             mainTextarea.value = data.text || '';
             lastSyncedText = data.text || '';
+            localDirty = false;
             subtleCodeSpan.textContent = code;
             subtleCodeDisplay.classList.remove('hidden');
             updateExpireTime(data.expiresAt);
@@ -275,6 +267,24 @@ copyCodeBtn.addEventListener('click', (e) => {
     }).catch(() => {
         showToast('Failed to copy', 'error');
     });
+});
+
+qrCodeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openQrModal(generatedCodeSpan.textContent);
+});
+
+subtleQrBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openQrModal(subtleCodeSpan.textContent);
+});
+
+qrModalClose.addEventListener('click', closeQrModal);
+qrModal.addEventListener('click', (e) => {
+    if (e.target === qrModal) closeQrModal();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !qrModal.classList.contains('hidden')) closeQrModal();
 });
 
 codeDisplayArea.addEventListener('click', () => {
@@ -314,6 +324,17 @@ function showButtonFeedback(button, showToastMessage = false, toastMessage = '')
     }, UI.FEEDBACK_DURATION);
 }
 
+function openQrModal(code) {
+    if (!code || code === '...' || code === '----') return;
+    qrModalSvg.innerHTML = qrSvg(`${location.origin}/?code=${code}`);
+    qrModalCode.textContent = code;
+    qrModal.classList.remove('hidden');
+}
+
+function closeQrModal() {
+    qrModal.classList.add('hidden');
+}
+
 function showCodeDisplay(code, autoHide = true) {
     generatedCodeSpan.textContent = code;
     subtleCodeSpan.textContent = code;
@@ -336,9 +357,11 @@ function handleInput() {
         return;
     }
 
+    if (currentMode === 'session') localDirty = true;
+
     // Auto-generate session code if in session mode and no code exists
     if (currentMode === 'session' && !currentSessionCode) {
-        currentSessionCode = generateSessionCode();
+        currentSessionCode = generateCode(PASTE.SESSION_CODE_LENGTH);
         showCodeDisplay(currentSessionCode);
         showToast(`Session created: ${currentSessionCode}`, 'success');
 
@@ -368,14 +391,15 @@ async function savePaste() {
         showCodeDisplay('...', false);
     }
 
-    isSyncing = isSession;
+    // Record our own write up front so its realtime echo isn't treated as a remote change.
+    if (isSession) lastSyncedText = text;
 
     try {
         const data = await createPaste({ text, customCode });
 
         if (isSession) {
-            lastSyncedText = text;
-            // Start real-time sync after first successful save
+            // Clean only if nothing new was typed during the round-trip.
+            if (mainTextarea.value.trim() === text) localDirty = false;
             if (!unsubscribeFromPaste) {
                 startRealtimeSync();
             }
@@ -400,17 +424,13 @@ async function savePaste() {
             codeDisplayArea.classList.add('hidden');
             subtleCodeDisplay.classList.add('hidden');
         }
-    } finally {
-        if (isSession) {
-            isSyncing = false;
-        }
     }
 }
 
 async function retrieveContent() {
     const code = codeInput.value.trim();
     if (code.length !== PASTE.CODE_LENGTH && code.length !== PASTE.SESSION_CODE_LENGTH) {
-        showToast(`Please enter a ${PASTE.CODE_LENGTH} or ${PASTE.SESSION_CODE_LENGTH}-digit code`, 'error');
+        showToast(`Please enter a ${PASTE.CODE_LENGTH} or ${PASTE.SESSION_CODE_LENGTH}-character code`, 'error');
         return;
     }
 
@@ -431,7 +451,16 @@ async function retrieveContent() {
 
         mainTextarea.value = data.text || '';
         lastSyncedText = data.text || '';
+        localDirty = false;
         codeDisplayArea.classList.add('hidden');
+
+        if (code.length === PASTE.CODE_LENGTH && data.text) {
+            try {
+                await navigator.clipboard.writeText(data.text);
+                showToast('Retrieved and copied to clipboard!', 'success');
+                return;
+            } catch {}
+        }
         showToast('Content retrieved!', 'success');
     } catch (err) {
         if (err.status === 429) {

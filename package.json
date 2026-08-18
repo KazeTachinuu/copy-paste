@@ -3,15 +3,18 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "license": "MIT",
   "scripts": {
     "dev": "concurrently \"bunx convex dev\" \"vite\"",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node test/codegen.test.mjs"
   },
   "dependencies": {
     "convex": "1.29.3",
     "convex-helpers": "0.1.105",
-    "lucide": "0.554.0"
+    "lucide": "0.554.0",
+    "qrcode-generator": "2.0.4"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

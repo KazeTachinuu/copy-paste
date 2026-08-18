@@ -1,12 +1,13 @@
 import './shared.css';
 import './list.css';
-import { createIcons, Sun, Moon, Trash2, Home } from 'lucide';
+import { createIcons, Sun, Moon, Home } from 'lucide';
 import { showToast } from './ui.js';
 import { UI } from '../config/constants.js';
 import { initThemeToggle } from './theme.js';
 import { getActivePastes, deletePaste } from './storage.js';
 
-// HTML escaping function to prevent XSS attacks
+const TRASH_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>';
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -14,17 +15,13 @@ function escapeHtml(text) {
 }
 
 initThemeToggle();
-
-// Initialize Lucide icons
-createIcons({
-    icons: { Sun, Moon, Trash2, Home }
-});
+createIcons({ icons: { Sun, Moon, Home } });
 
 let currentPage = 1;
 let allPastes = [];
 let refreshInterval;
 let countdownInterval;
-let deleteConfirmTimeout;
+let selectedConfirmTimeout;
 
 const subtitle = document.getElementById('subtitle');
 const tableBody = document.getElementById('table-body');
@@ -93,6 +90,7 @@ function renderTable() {
     }
 
     const totalPages = Math.ceil(allPastes.length / UI.ITEMS_PER_PAGE);
+    currentPage = Math.max(1, Math.min(currentPage, totalPages));
     const startIdx = (currentPage - 1) * UI.ITEMS_PER_PAGE;
     const endIdx = startIdx + UI.ITEMS_PER_PAGE;
     const pagePastes = allPastes.slice(startIdx, endIdx);
@@ -105,7 +103,7 @@ function renderTable() {
             <td data-label="Expires In" class="expires" data-expires-at="${paste.expiresAt}">${formatTime(paste.expiresIn)}</td>
             <td data-label="Actions" class="actions">
                 <button class="delete-btn" data-code="${escapeHtml(paste.code)}" title="Delete from list" aria-label="Delete ${escapeHtml(paste.code)} from list">
-                    <i data-lucide="trash-2" width="16" height="16"></i>
+                    ${TRASH_ICON}
                 </button>
             </td>
         </tr>
@@ -146,24 +144,15 @@ function renderTable() {
                 const code = btn.dataset.code;
                 await handleDelete(code);
             } else {
-                // First click - show confirmation
                 btn.classList.add('confirm');
                 btn.innerHTML = 'Sure?';
-
-                // Reset after 3 seconds
-                if (deleteConfirmTimeout) clearTimeout(deleteConfirmTimeout);
-                deleteConfirmTimeout = setTimeout(() => {
+                clearTimeout(btn._confirmTimer);
+                btn._confirmTimer = setTimeout(() => {
                     btn.classList.remove('confirm');
-                    btn.innerHTML = '<i data-lucide="trash-2" width="16" height="16"></i>';
-                    createIcons({ icons: { Trash2 } });
+                    btn.innerHTML = TRASH_ICON;
                 }, 3000);
             }
         });
-    });
-
-    // Re-initialize icons after DOM update
-    createIcons({
-        icons: { Sun, Moon, Trash2, Home }
     });
 
     // Show pagination if needed
@@ -299,10 +288,8 @@ deleteSelectedBtn.addEventListener('click', async () => {
         // First click - show confirmation
         deleteSelectedBtn.classList.add('confirm');
         deleteSelectedBtn.textContent = 'Sure?';
-
-        // Reset after 3 seconds
-        if (deleteConfirmTimeout) clearTimeout(deleteConfirmTimeout);
-        deleteConfirmTimeout = setTimeout(() => {
+        clearTimeout(selectedConfirmTimeout);
+        selectedConfirmTimeout = setTimeout(() => {
             deleteSelectedBtn.classList.remove('confirm');
             deleteSelectedBtn.textContent = 'Delete Selected';
         }, 3000);

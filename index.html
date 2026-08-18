@@ -41,7 +41,12 @@
     <!-- Subtle Code Display (Left Side - Always Visible) -->
     <div id="subtle-code-display" class="subtle-code hidden">
       <span class="subtle-label">YOUR CODE</span>
-      <span id="subtle-code" class="subtle-code-value">----</span>
+      <div class="subtle-code-row">
+        <span id="subtle-code" class="subtle-code-value">----</span>
+        <button id="subtle-qr-btn" class="icon-btn" title="Show QR code" aria-label="Show QR code">
+          <i data-lucide="qr-code" width="18" height="18"></i>
+        </button>
+      </div>
       <span id="sync-status" class="sync-status hidden"></span>
       <span id="expire-time" class="expire-time hidden"></span>
     </div>
@@ -51,6 +56,9 @@
       <span class="label">YOUR CODE</span>
       <div class="code-content">
         <span id="generated-code">----</span>
+        <button id="qr-code-btn" class="icon-btn" title="Show QR code" aria-label="Show QR code">
+          <i data-lucide="qr-code" width="20" height="20"></i>
+        </button>
         <button id="copy-code-btn" class="icon-btn" title="Copy Code">
           <i data-lucide="copy" width="20" height="20"></i>
         </button>
@@ -86,6 +94,16 @@
           <i data-lucide="arrow-right" width="24" height="24"></i>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen QR Modal -->
+  <div id="qr-modal" class="qr-modal hidden" role="dialog" aria-modal="true" aria-label="QR code for your paste">
+    <div class="qr-modal-card">
+      <span class="qr-modal-hint">Scan to open on another device</span>
+      <div id="qr-modal-svg" class="qr-modal-svg"></div>
+      <span id="qr-modal-code" class="qr-modal-code">----</span>
+      <button id="qr-modal-close" class="qr-modal-close">Close</button>
     </div>
   </div>
 

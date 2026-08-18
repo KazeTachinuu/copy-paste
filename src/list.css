@@ -38,11 +38,12 @@ body {
   transform: translateY(-1px);
 }
 
-/* Theme Toggle - Position for list page */
+/* Theme Toggle - top-right so it never sits over the heading */
 .theme-toggle {
   position: fixed;
   top: clamp(1rem, 3vw, 3rem);
-  left: clamp(7.5rem, 12vw, 9.5rem);
+  right: clamp(1rem, 3vw, 3rem);
+  left: auto;
 }
 
 /* Container */
@@ -52,10 +53,10 @@ body {
   width: 100%;
 }
 
-/* Header */
+/* Header clears the fixed Home / theme buttons at every width */
 header {
   margin-bottom: 3rem;
-  padding-top: 1rem;
+  padding-top: 4rem;
 }
 
 h1 {
@@ -307,9 +308,8 @@ td {
 
   header {
     margin-bottom: 2rem;
-    padding-top: 0.5rem;
+    padding-top: 3.5rem;
   }
-
 
   th,
   td {
@@ -328,10 +328,6 @@ td {
     padding: 1rem;
   }
 
-  .container {
-    margin-top: 3.5rem;
-  }
-
   header {
     margin-bottom: 2rem;
   }
@@ -344,7 +340,6 @@ td {
   .theme-toggle {
     width: 2rem;
     height: 2rem;
-    left: 4.5rem;
   }
 
   /* Stack table on mobile */

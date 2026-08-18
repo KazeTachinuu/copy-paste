@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
+import { mutation, query, internalMutation, MutationCtx, QueryCtx } from "./_generated/server";
 import { Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { rateLimit } from "convex-helpers/server/rateLimit";
@@ -30,12 +30,19 @@ const GLOBAL_RATE_LIMIT = {
   capacity: 500,
 };
 
+const CODE_CHARS = '23456789ACDEFGHJKLMNPQRSTUVWXYZ'; // 31 chars, no confusing 0/O/1/I/L/B/8
+
+// Unbiased sampling: 31 = 2^5-1, so mask each random byte with 0x1F and reject the
+// one overflow value (31). ponytail: 8 lines of masked rejection beats a nanoid dep.
 function generateCode(length: number): string {
-  const chars = '23456789ACDEFGHJKLMNPQRSTUVWXYZ';
   let code = '';
-  for (let i = 0; i < length; i++) {
-    const randomValue = crypto.getRandomValues(new Uint32Array(1))[0];
-    code += chars[randomValue % chars.length];
+  while (code.length < length) {
+    for (const byte of crypto.getRandomValues(new Uint8Array(length * 2))) {
+      if ((byte & 31) < CODE_CHARS.length) {
+        code += CODE_CHARS[byte & 31];
+        if (code.length === length) break;
+      }
+    }
   }
   return code;
 }
@@ -191,38 +198,6 @@ export const cleanupExpired = internalMutation({
     }
 
     return { deleted: expired.length };
-  },
-});
-
-// Monitoring query: Check current global rate limit status
-// Use this to set up alerts if tokens drop below a threshold
-export const getRateLimitStatus = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const globalLimit = await ctx.db
-      .query("rateLimits")
-      .withIndex("name", (q) => q.eq("name", "createPaste:global"))
-      .first();
-
-    if (!globalLimit) {
-      return {
-        tokens: GLOBAL_RATE_LIMIT.capacity,
-        capacity: GLOBAL_RATE_LIMIT.capacity,
-        percentage: 100,
-        status: "healthy",
-      };
-    }
-
-    const percentage = (globalLimit.value / GLOBAL_RATE_LIMIT.capacity) * 100;
-    const status = percentage > 50 ? "healthy" : percentage > 20 ? "warning" : "critical";
-
-    return {
-      tokens: Math.round(globalLimit.value),
-      capacity: GLOBAL_RATE_LIMIT.capacity,
-      percentage: Math.round(percentage),
-      status,
-      lastUpdate: globalLimit.ts,
-    };
   },
 });
 

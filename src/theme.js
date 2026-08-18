@@ -66,9 +66,9 @@ export function toggleTheme() {
  * Automatically sets up click handler and syncs UI
  */
 export function initThemeToggle() {
-  // Apply saved theme immediately (before page renders)
-  const currentTheme = getTheme();
-  setTheme(currentTheme);
+  // Apply the effective theme WITHOUT persisting a system-derived choice, so the
+  // matchMedia listener below keeps following the OS until the user explicitly toggles.
+  document.documentElement.setAttribute('data-theme', getTheme());
 
   // Set up toggle button
   const toggleBtn = document.getElementById('theme-toggle');

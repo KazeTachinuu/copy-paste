@@ -251,12 +251,22 @@ body {
   font-weight: 600;
 }
 
+.subtle-code-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .subtle-code-value {
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--success-color);
   letter-spacing: 3px;
   font-variant-numeric: tabular-nums;
+}
+
+.subtle-code .icon-btn {
+  padding: 4px;
 }
 
 .sync-status {
@@ -274,6 +284,7 @@ body {
   font-size: 0.5rem;
   animation: pulse 2s infinite;
 }
+
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
@@ -340,6 +351,94 @@ body {
   letter-spacing: 4px;
   text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);
   font-variant-numeric: tabular-nums;
+}
+
+/* Fullscreen QR Modal */
+.qr-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fadeIn 0.2s ease;
+}
+
+.qr-modal.hidden {
+  display: none;
+}
+
+.qr-modal-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 2rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.qr-modal-hint {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: center;
+}
+
+.qr-modal-svg {
+  width: min(72vw, 320px);
+  height: min(72vw, 320px);
+  background: #fff;
+  padding: 1rem;
+  border-radius: 16px;
+}
+
+.qr-modal-svg svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.qr-modal-code {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--success-color);
+  letter-spacing: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.qr-modal-close {
+  background: var(--hover-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 0.6rem 2rem;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.qr-modal-close:hover {
+  background: var(--primary-color);
+  color: #fff;
+  border-color: transparent;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* Floating Widget */
@@ -434,8 +533,9 @@ body {
     height: 100dvh;
   }
 
+  /* Clear the top nav row, plus the code chip + retrieve bar at the bottom. */
   .main-container {
-    padding: 1rem;
+    padding: 4rem 1rem 14rem;
   }
 
   #main-textarea {
@@ -443,6 +543,7 @@ body {
     padding: 1.5rem 1rem;
   }
 
+  /* Nav: link top-left, theme toggle top-right, no overlap. */
   .list-link,
   .theme-toggle {
     top: 1rem;
@@ -453,14 +554,44 @@ body {
   }
 
   .theme-toggle {
-    left: 5.5rem;
+    left: auto;
+    right: 1rem;
   }
 
+  /* Transient reveal card is desktop-only; mobile uses the persistent chip below. */
   .code-overlay {
-    top: 1rem;
+    display: none;
+  }
+
+  /* Persistent code chip: a card just above the retrieve bar, with QR + expiry. */
+  .subtle-code {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.75rem;
+    row-gap: 0.15rem;
+    top: auto;
+    bottom: 8rem;
+    left: 1rem;
     right: 1rem;
-    left: auto;
-    padding: 0.8rem 1rem;
+    opacity: 1;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 0.6rem 1rem;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .subtle-code .sync-status,
+  .subtle-code .expire-time {
+    margin-top: 0;
+  }
+
+  /* Label claims the first row; code + status wrap cleanly onto the next. */
+  .subtle-label {
+    flex-basis: 100%;
   }
 
   #generated-code {
@@ -496,25 +627,6 @@ body {
   .theme-toggle {
     width: 2rem;
     height: 2rem;
-    left: 4.5rem;
-  }
-
-  .subtle-code {
-    display: none;
-  }
-
-  .code-overlay {
-    padding: 0.6rem 0.8rem;
-  }
-
-  .code-overlay .label {
-    font-size: 0.65rem;
-    letter-spacing: 2px;
-  }
-
-  #generated-code {
-    font-size: 1.5rem;
-    letter-spacing: 3px;
   }
 
   #main-textarea {

@@ -12,6 +12,5 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_code", ["code"])
-    .index("by_expiration", ["expiresAt"])
-    .index("by_type", ["type"]),
+    .index("by_expiration", ["expiresAt"]),
 });
